@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/researcher/work/csaw/submission/ai/snapshot_transcript.sh >/dev/null 2>&1 || true",
+            "timeout": 30,
+            "statusMessage": "Snapshotting AI transcript to submission/ai/"
+          }
+        ]
+      }
+    ]
+  }
+}

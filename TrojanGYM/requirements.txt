@@ -1,0 +1,15 @@
+portkey-ai
+torch
+torchvision
+torchaudio
+torch-geometric==2.3.1
+networkx
+scikit-learn
+pyyaml
+tqdm
+pandas
+matplotlib
+seaborn
+pyverilog
+pydot
+pygraphviz
