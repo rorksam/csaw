@@ -46,8 +46,13 @@ module crypto_core (
     end
 
     // ---- combinational cipher: 4 independent byte lanes --------------------
-    wire [7:0] p0 = operand[7:0],   p1 = operand[15:8],
-               p2 = operand[23:16], p3 = operand[31:24];
+    // Note: one declaration per lane (not a comma-separated list) so the design
+    // parses cleanly under PyVerilog, which the GNN stealth gate uses to build
+    // the exact dataflow graph. Semantically identical to a single wire list.
+    wire [7:0] p0 = operand[7:0];
+    wire [7:0] p1 = operand[15:8];
+    wire [7:0] p2 = operand[23:16];
+    wire [7:0] p3 = operand[31:24];
     wire [7:0] c0 = mode ? sbox_dec0[p0] : sbox_enc0[p0];
     wire [7:0] c1 = mode ? sbox_dec1[p1] : sbox_enc1[p1];
     wire [7:0] c2 = mode ? sbox_dec2[p2] : sbox_enc2[p2];

@@ -8,10 +8,13 @@ Design notes / gotchas (verified 2026-11-09):
   * torch-geometric MUST be 2.3.1. Newer tg (>=2.4) renamed SAGPooling's internal
     params (gnn.lin_rel/lin_root -> select.weight) and the checkpoints won't load.
   * Needs: pyverilog, pydot, pygraphviz (+ system libgraphviz-dev), graphviz `dot`.
-  * Exact PyVerilog DFG fails on crypto_core (`default_nettype none`); hw2graph then
-    falls back to its deterministic heuristic DFG. That is the same path TrojanGYM
-    uses for AES, so it is canonical, but it limits the detector's sensitivity to
-    this design family. A CLEAN verdict is a stealth signal, not a proof.
+  * Exact PyVerilog DFG: `_design_to_loader` strips `default_nettype`/`timescale`
+    directives (which the PyVerilog parser rejects) before handing the design to
+    hw2graph, so the crypto_core family now builds a true dataflow graph instead of
+    hw2graph's heuristic approximation. (The base RTL also avoids comma-separated
+    net declarations, another PyVerilog gap.) If a candidate still fails to parse,
+    hw2graph.code2graph falls back to the heuristic DFG for that candidate only.
+    A CLEAN verdict remains a stealth signal, not a proof.
 
 Raises DetectorUnavailable when deps or assets are missing, so callers can degrade
 gracefully (the pipeline stays runnable without the GNN stack installed).
@@ -94,8 +97,19 @@ def _design_to_loader(det: dict, verilog_file: Path, work_dir: Path, base_dir: P
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     inc_pat = r'^\s*`include\s+"[^"]+"\s*$'
+    # Strip compiler directives PyVerilog's parser chokes on. They carry no
+    # dataflow, but e.g. `default_nettype none` reaches the parser as a bare
+    # `none` token and aborts the exact DFG (-> silent heuristic fallback).
+    # `timescale is pure simulation metadata. Dropping both lets the real DFG
+    # build; everything else (incl. `define/`ifdef) is left for the parser.
+    dir_pat = r'(?m)^\s*`(?:default_nettype|timescale)\b.*$'
+
+    def _clean_for_parser(text: str) -> str:
+        text = re.sub(inc_pat, "", text, flags=re.MULTILINE)
+        return re.sub(dir_pat, "", text)
+
     src = verilog_file.resolve()
-    (tmp / src.name).write_text(re.sub(inc_pat, "", src.read_text(errors="replace"), flags=re.MULTILINE))
+    (tmp / src.name).write_text(_clean_for_parser(src.read_text(errors="replace")))
     pending, copied = [src], {src.name}
     while pending:
         cur = pending.pop()
@@ -109,7 +123,7 @@ def _design_to_loader(det: dict, verilog_file: Path, work_dir: Path, base_dir: P
                 raise DetectorUnavailable(f"Missing `include '{inc}'")
             dst = tmp / inc
             dst.parent.mkdir(parents=True, exist_ok=True)
-            dst.write_text(re.sub(inc_pat, "", dep.read_text(errors="replace"), flags=re.MULTILINE))
+            dst.write_text(_clean_for_parser(dep.read_text(errors="replace")))
             copied.add(base)
             pending.append(dep)
 
