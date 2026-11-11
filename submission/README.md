@@ -273,6 +273,8 @@ submission/
 - ✅ **Bonus — master key recovered:** full 32-bit key `0x8E043CB1` extracted and
   proven (`re/MASTERKEY.md`; proof testbench `re/testbenches/tb_verify.v` zeroes all
   four lane addresses for `p = 0x8E043CB1`).
-- ⏳ **Known issue:** the footprint metric misparses `yosys synth_ice40; stat` on stock
-  Colab (reports wrong cell counts); it is correct in the lab image. Scores quoted here
-  are the lab-image/local values. Pin or robustify the parser for Colab reproducibility.
+- ✅ **Footprint parser robustified** for cross-version yosys: it now reads only the
+  final `stat` report and sums all primitive variants per cell class (previously a
+  first-match parse misread stock-Colab yosys). Verified locally — BASE
+  `141 LUT4 / 68 DFF / 8 RAM40 / 1 CARRY`, chosen-Trojan delta `−10 LUT4 / +0 DFF`;
+  pending a confirming Colab run.
