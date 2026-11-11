@@ -273,8 +273,12 @@ submission/
 - ✅ **Bonus — master key recovered:** full 32-bit key `0x8E043CB1` extracted and
   proven (`re/MASTERKEY.md`; proof testbench `re/testbenches/tb_verify.v` zeroes all
   four lane addresses for `p = 0x8E043CB1`).
-- ✅ **Footprint parser robustified** for cross-version yosys: it now reads only the
-  final `stat` report and sums all primitive variants per cell class (previously a
-  first-match parse misread stock-Colab yosys). Verified locally — BASE
-  `141 LUT4 / 68 DFF / 8 RAM40 / 1 CARRY`, chosen-Trojan delta `−10 LUT4 / +0 DFF`;
-  pending a confirming Colab run.
+- ✅ **Footprint parser robustified** for cross-version yosys. yosys prints the `stat`
+  cell table in opposite column orders by version — count-first (`141 SB_LUT4`) on the
+  lab image's 0.60, name-first (`SB_LUT4 107`) on stock Colab's 0.33 — so the original
+  parser read zero cells on Colab. It now reads only the final `stat` report, accepts
+  both column orders, and sums primitive variants per cell class. Note the **absolute**
+  LUT4 count is itself yosys-version-dependent (141 on 0.60 vs 107 on 0.33); the
+  footprint **score** is unaffected because it uses the Trojan-vs-base delta computed on
+  the same toolchain (chosen Trojan: `−10 LUT4 / +0 DFF`). Figures quoted in this brief
+  are the lab-image (0.60) values.
