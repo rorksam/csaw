@@ -1,10 +1,12 @@
 # CSAW Hardware-Trojan Challenge — Technical Brief
 
-> **Status: work-in-progress report.** Reverse engineering, cipher analysis, and the
-> full agentic Trojan-insertion pipeline are complete and validated. The final
-> LLM-*generated* Trojan population is produced by running the pipeline notebook
-> (next step); a hand-authored **reference Trojan** is included and scored end-to-end
-> to demonstrate the whole flow working.
+> **Status: complete.** Reverse engineering, cipher analysis, and the full agentic
+> Trojan-insertion pipeline are built and validated, and the **live multi-model LLM
+> pass has been run**. It produced the chosen Trojan **`magic-operand-leak`** (scored
+> **100/100**; the LLM output is re-verified bit-exact against the local toolchain in
+> `rtl/crypto_core_trojan.v` with the exploit testbench `tb/exploit_tb.v`). The raw
+> model responses and run record are in `pipeline/live_run/`. A hand-authored
+> **reference Trojan** (`structured_insert`) is retained as the offline validation seed.
 
 Target: a Lattice **iCE40 UltraPlus UP5K** FPGA ("Hackster" board) acting as an SPI
 **peripheral** lightweight crypto accelerator, driven by an RP2040 SPI controller.
@@ -127,6 +129,7 @@ API key, so the loop is always reproducible.
 | Sim harness | Icarus Verilog | command-driven SPI TB (`R`/`E`/`D` programs, state preserved across ops → supports sequential Trojans) |
 | Footprint | Yosys `synth_ice40` | iCE40 cell counts; base = **141 LUT4 / 68 DFF / 8 RAM40 / 1 CARRY** |
 | **AST gate** | **pyslang 12.1.0** | parse + semantic **elaborate** (`Compilation.getAllDiagnostics`) and enforce module name + exact port list are unchanged — the Trojan may not alter the SPI interface |
+| **GNN stealth gate** | **TrojanGYM GNN4TJ** (torch-geometric 2.3.1) | 4-model ensemble converts each candidate's RTL to an exact PyVerilog dataflow graph and votes clean/trojan — **self-calibrating** (see §3a): only influences the score when it can actually discriminate on this design family |
 | Scorer | all of the above | single weighted scorecard with hard gates (AST / interface / compile / functional) |
 | Structured inserter | anchor splice | deterministic AST-located Trojan insertion + offline seed generator |
 | Generator | Anthropic / OpenAI | provider-agnostic client; structured JSON candidate contract |
@@ -138,47 +141,89 @@ is **multi-model**; and the loop is a genuine **feedback/refinement agent** rath
 one-shot prompting. The verification oracle is derived from the *reverse-engineered
 cipher itself*, so "normal operation preserved" is checked against the real function.
 
+### 3a · Learned detector gate — and why it *recuses itself* (honest calibration)
+
+A second, **learned** stealth gate layers the four **TrojanGYM Robust-GNN4TJ**
+checkpoints on top of the oracle check: each candidate's RTL is converted to an exact
+PyVerilog dataflow graph (local `hw2vec`) and the ensemble votes clean/trojan.
+
+The honest finding, and what makes this gate trustworthy: **GNN4TJ is out-of-distribution
+for this SPI block cipher.** Measured on the recovered core, the clean base, a small
+key-leak, and a *blatant* counter time-bomb all read `P(trojan) ≈ 0.28–0.34` — the
+detector cannot see the Trojan here, so an absolute "evades if P < threshold" signal is
+meaningless (the blatant Trojan earns it too). On the models' **own labelled dataset**
+they do separate strongly (clean median P ≈ 0.25 vs trojan ≈ 0.93), so the failure is
+specific to this design family, not a broken detector.
+
+Rather than quietly trust a useless number, the pipeline **calibrates at startup**: it
+records the clean-core baseline `P(trojan)`, then runs a deliberately blatant Trojan
+control on the same core. The detector only contributes to the score if it separates
+that control from clean by ≥ 0.15; otherwise it **sits out** (`evades_detector = None`,
+its score weight vanishes) and selection rests on the functional / stealth / specificity
+/ footprint gates, which *are* discriminating here. When the detector is informative it
+scores the **rise over baseline** (`Δ = P − baseline`), not the raw out-of-distribution
+value. This is a deliberate design choice to avoid reporting a fabricated "beats the
+detector" result — the kind of over-claim an unaudited learned gate invites.
+
 **Reproducibility:** `pip install -r pipeline/requirements.txt` (pyslang, anthropic,
 openai; EDA tools ship in the lab image). Run the notebook top-to-bottom. Setting
 `TROJAN_ENABLE_LLM=0` forces the offline seed-bank path for a key-free CI run.
-Artifacts land in `pipeline/pipeline_out/` (best RTL, `scorecards.json`, `RUN_SUMMARY.md`).
+Artifacts land in `pipeline/pipeline_out/` (best RTL, `scorecards.json`, `RUN_SUMMARY.md`);
+the committed record of the live LLM pass is under `pipeline/live_run/`.
 
 ---
 
-## 4 · Trojan design — reference example (demonstrates the flow)
+## 4 · Trojan design — the chosen LLM-generated Trojan
 
-The pipeline's scorer is validated end-to-end against a hand-authored reference
-Trojan (the LLM-generated population is produced later by running the loop):
+The deliverable Trojan, **`magic-operand-leak`**, was authored by the live multi-model
+loop (Anthropic `claude-opus-4-8`). It emerged on the loop's third candidate: the first
+two (`operand-selftrig-x4`) scored **0** — their self-trigger collided with the
+functional test vectors, breaking normal operation — and the refine loop corrected that
+into a clean sentinel trigger. RTL: `rtl/crypto_core_trojan.v`; raw model responses and
+the run record: `pipeline/live_run/`.
 
-- **Trigger:** a **magic plaintext word** (`0xDEADBEEF`) presented to an *encrypt*
-  operation. Chosen so it never arises in normal traffic — **false-trigger
-  probability ≈ 2⁻³²**; measured false-trigger rate over 128 random vectors = **0**.
-- **Payload:** on the trigger, the operation returns a **constant leak word
-  (`0x8E043CB0`, the recovered key-byte candidates) on MISO** instead of the true
-  ciphertext — a **key-exfiltration** payload. All other traffic is bit-exact to the
-  original.
+- **Trigger:** a **sentinel operand** (`0xA5A5F00F`) presented to any encrypt *or*
+  decrypt operation. It never arises in normal traffic — **false-trigger probability
+  ≈ 2⁻³²**; measured false-trigger rate over 128 random vectors = **0**.
+- **Payload:** on the trigger the operation returns a **constant leak word
+  (`0xDEADC0DE`) on MISO** instead of the true result (a clean core would return
+  `0x4F92F627`) — a signalling/exfiltration payload on the observable output. All other
+  traffic is bit-exact to the original.
 - **Stealth / footprint:** normal encrypt/decrypt unchanged (stealth = **1.0** across
-  all 128 random vectors + both documented vectors); area delta **+11 LUT4, +0 DFF**;
-  SPI interface and 4-cycle timing preserved.
-- **Aggregate score: 97.25 / 100** (stealth 40 + payload 30 + specificity 15 +
-  footprint 12.25).
+  all 128 random vectors + both documented vectors); area delta **−10 LUT4, +0 DFF**
+  (the sentinel mux lets the synthesiser prune the result path, so the Trojan is
+  *smaller* than the base); SPI interface and 4-cycle timing preserved.
+- **Aggregate score: 100.0 / 100** (stealth 40 + payload 30 + specificity 15 +
+  footprint 15), confirmed by an independent re-score on the local toolchain and by the
+  self-checking `tb/exploit_tb.v` (all four checks PASS).
+- **Learned detector:** GNN4TJ reads it CLEAN (0/4 votes); per §3a the gate is
+  out-of-distribution for this family and correctly **recuses itself** rather than
+  claiming a stealth result it cannot support.
 
-This is implemented as a tiny comparator + payload mux spliced at the `cipher_out`
-assignment (`structured_insert()` in the notebook) — the same gate/scorer then judges
-LLM-authored variants identically.
+**Reference / seed Trojan.** The offline `structured_insert()` seed demonstrates the
+same flow with a **key-exfiltration** payload: trigger `0xDEADBEEF`, leaking the
+recovered key-byte candidates `0x8E043CB0` on MISO (score 97.25, area +11 LUT4). The
+identical AST gate + scorer judge the hand-authored seed and the LLM variants the same
+way.
 
 ---
 
 ## 5 · Exploitation / hardware reproduction
 
-The simulation testbench (`pipeline/tb_core.v` and the notebook's command-driven TB)
-proves **both** normal operation and the triggered exploit. To reproduce on real
-hardware from a generated bitstream, drive the SPI peripheral exactly as the RP2040
-test script (`../spi_ice40_crypto_ip_test.py`) does:
+The self-checking testbench **`tb/exploit_tb.v`** proves **both** normal operation and
+the triggered exploit against `rtl/crypto_core_trojan.v` (all four checks PASS):
+
+```
+cd submission/rtl
+iverilog -g2012 -o /tmp/exploit.vvp ../tb/exploit_tb.v crypto_core_trojan.v && vvp /tmp/exploit.vvp
+```
+
+To reproduce on real hardware from a generated bitstream, drive the SPI peripheral
+exactly as the RP2040 test script (`../spi_ice40_crypto_ip_test.py`) does:
 
 1. Normal check — encrypt `0x59C359C3`; expect `0x9CD84392` on MISO (Trojan dormant).
-2. Exploit — encrypt the **magic word** `0xDEADBEEF`; instead of its ciphertext the
-   peripheral returns the leak word `0x8E043CB0` on MISO.
+2. Exploit — encrypt the **sentinel word** `0xA5A5F00F`; instead of its ciphertext
+   (`0x4F92F627`) the peripheral returns the leak word `0xDEADC0DE` on MISO.
 3. Confirm dormancy — any other word encrypts/decrypts normally.
 
 Operating sequence per op (unchanged by the Trojan): pulse `RST_N`; set `ENC_DEC`;
@@ -193,22 +238,32 @@ high→low); `NORM_CS_N=0`, clock 32 bits to read MISO. Max `SCK` 1 MHz.
 submission/
 ├── README.md              # this technical brief
 ├── rtl/                   # clean reverse-engineered base design + S-box ROMs
-│   ├── crypto_core.v      #   (Trojan target; bit-exact to the bitstream)
+│   ├── crypto_core.v         #   clean base (Trojan target; bit-exact to the bitstream)
+│   ├── crypto_core_trojan.v  #   ← CHOSEN LLM-generated Trojan (magic-operand-leak)
 │   └── rom_{enc,dec}{0..3}.hex
 ├── re/                    # reverse-engineering artifacts + regeneration recipe
 │   ├── recovered.v, clean_model.v, E.json, lanes.json, README_RE.md
 │   └── testbenches/       # RE/analysis probes (pin map, lane independence, key peel)
 ├── pipeline/              # the agentic Trojan pipeline
 │   ├── trojan_feedback_pipeline.ipynb   # ← the one-click AI→sim loop
+│   ├── trojangym_scorer.py              #   GNN detector gate (see §3a)
 │   ├── cipher_tables.json, lane_tables.json, tb_core.v, requirements.txt
-│   └── pipeline_out/      # run artifacts (best_trojan.v, scorecards, summary)
-├── tb/                    # exploit testbench (to be finalized with the chosen Trojan)
+│   ├── live_run/          #   committed record of the live LLM pass (summary,
+│   │                      #   scorecards, best_trojan.v, raw llm_response_*.txt)
+│   └── pipeline_out/      #   ephemeral run artifacts (gitignored; regenerated)
+├── tb/                    # exploit testbench
+│   └── exploit_tb.v       #   self-checking normal-op + exploit demonstration
 └── ai/                    # ALL AI chat logs (transcripts + render tooling)
 ```
 
-## 7 · Remaining work
+## 7 · Status of remaining work
 
-- Run the refine loop live (multi-model once the Anthropic key is loaded into the
-  container) to produce the LLM-generated Trojan population.
-- Promote the chosen `best_trojan.v` into `rtl/` and finalize the exploit TB in `tb/`.
-- Optional: exact per-bit master-key extraction from the un-flattened `recovered.v`.
+- ✅ **Live LLM pass run** — the multi-model loop produced the chosen Trojan
+  `magic-operand-leak` (`pipeline/live_run/`).
+- ✅ **Chosen Trojan promoted** to `rtl/crypto_core_trojan.v` and the exploit testbench
+  finalized at `tb/exploit_tb.v` (re-verified locally; all checks PASS).
+- ⏳ **Optional bonus:** exact per-bit master-key extraction from the un-flattened
+  `recovered.v` (rounds intact) — ~80% done; high 7 bits of each key byte recovered.
+- ⏳ **Known issue:** the footprint metric misparses `yosys synth_ice40; stat` on stock
+  Colab (reports wrong cell counts); it is correct in the lab image. Scores quoted here
+  are the lab-image/local values. Pin or robustify the parser for Colab reproducibility.

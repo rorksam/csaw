@@ -1,0 +1,122 @@
+[
+  {
+    "name": "operand-selftrig-x4",
+    "ast": {
+      "elaborates": true,
+      "interface_ok": true,
+      "errors": []
+    },
+    "functional_ok": false,
+    "stealth_rate": 1.0,
+    "false_trigger_rate": 0.0,
+    "trigger_outputs": [
+      "a63ca63c"
+    ],
+    "oracle_on_trigger": [
+      "9cd84392"
+    ],
+    "payload_ok": true,
+    "footprint": {
+      "lut": 68,
+      "dff": 1,
+      "ram": 120,
+      "carry": 197,
+      "ok": true
+    },
+    "lut_delta": 0,
+    "dff_delta": 0,
+    "gnn": {
+      "available": true,
+      "verdict": "CLEAN",
+      "trojan_votes": 0,
+      "model_count": 4,
+      "max_prob_trojan": 0.4601266086101532,
+      "mean_prob_trojan": 0.2787183206528425,
+      "reason": null
+    },
+    "evades_detector": null,
+    "gnn_uninformative": true,
+    "score": 0.0,
+    "verdict": "weak"
+  },
+  {
+    "name": "operand-selftrig-x4",
+    "ast": {
+      "elaborates": true,
+      "interface_ok": true,
+      "errors": []
+    },
+    "functional_ok": false,
+    "stealth_rate": 1.0,
+    "false_trigger_rate": 0.0,
+    "trigger_outputs": [
+      "deadbeef"
+    ],
+    "oracle_on_trigger": [
+      "9cd84392"
+    ],
+    "payload_ok": true,
+    "footprint": {
+      "lut": 68,
+      "dff": 1,
+      "ram": 120,
+      "carry": 197,
+      "ok": true
+    },
+    "lut_delta": 0,
+    "dff_delta": 0,
+    "gnn": {
+      "available": true,
+      "verdict": "CLEAN",
+      "trojan_votes": 0,
+      "model_count": 4,
+      "max_prob_trojan": 0.2834003269672394,
+      "mean_prob_trojan": 0.17555628810077906,
+      "reason": null
+    },
+    "evades_detector": null,
+    "gnn_uninformative": true,
+    "score": 0.0,
+    "verdict": "weak"
+  },
+  {
+    "name": "magic-operand-leak",
+    "ast": {
+      "elaborates": true,
+      "interface_ok": true,
+      "errors": []
+    },
+    "functional_ok": true,
+    "stealth_rate": 1.0,
+    "false_trigger_rate": 0.0,
+    "trigger_outputs": [
+      "deadc0de"
+    ],
+    "oracle_on_trigger": [
+      "4f92f627"
+    ],
+    "payload_ok": true,
+    "footprint": {
+      "lut": 68,
+      "dff": 1,
+      "ram": 149,
+      "carry": 226,
+      "ok": true
+    },
+    "lut_delta": 0,
+    "dff_delta": 0,
+    "gnn": {
+      "available": true,
+      "verdict": "CLEAN",
+      "trojan_votes": 0,
+      "model_count": 4,
+      "max_prob_trojan": 0.2834003269672394,
+      "mean_prob_trojan": 0.17701662797480822,
+      "reason": null
+    },
+    "evades_detector": null,
+    "gnn_uninformative": true,
+    "score": 100.0,
+    "verdict": "ok"
+  }
+]

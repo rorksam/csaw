@@ -2854,3 +2854,1407 @@ New env knobs: `TROJAN_GNN_DELTA_SPAN`, `TROJAN_GNN_DELTA_MARGIN`, `TROJAN_GNN_M
 - Memory `trojangym-detector` updated to supersede yesterday's "detector now separates" conclusion with today's control finding.
 
 One note: the committed notebook keeps its prior (stale) cell outputs — I validated against a freshly executed copy in the scratchpad rather than committing regenerated outputs. Say the word if you'd like me to commit a clean executed run too.
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:14:32.358Z</sub>
+
+generation mode: anthropic
+/tmp/tjgym_rjx8qk8n/hw2vec_test_design/topModule.v , 109 , 141 , 1.3391516208648682
+iter 0: operand-selftrig-x4 score=0.0    verdict=weak       stealth=1.0 payload=True lutD=0 dffD=0 gnnP=0.460 evade=None
+/tmp/tjgym_qxxja2an/hw2vec_test_design/topModule.v , 109 , 140 , 1.7111105918884277
+iter 1: operand-selftrig-x4 score=0.0    verdict=weak       stealth=1.0 payload=True lutD=0 dffD=0 gnnP=0.283 evade=None
+/tmp/tjgym_w5martx5/hw2vec_test_design/topModule.v , 107 , 137 , 1.3371148109436035
+iter 2: magic-operand-leak score=100.0  verdict=ok         stealth=1.0 payload=True lutD=0 dffD=0 gnnP=0.283 evade=None
+  target quality reached; stopping early.
+
+BEST: ('magic-operand-leak', 100.0)
+
+I'm still seeing gnnP 0.283, but the magic operand leak is the best score I've seen so far. Is it working, or is it still accepting low scores for tjgym?
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:15:16.464Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:15:27.785Z</sub>
+
+Yes — it's working, and this run is the fix behaving exactly as intended. Let me decode it.
+
+## The `gnnP=0.283` is expected, not a bug
+We never changed what the GNN *outputs* — we can't, without retraining it. It still emits its out-of-distribution constant (~0.28–0.46) for this cipher family. What changed is that **we no longer trust it**: `evade=None` on every iteration means startup calibration marked the detector UNINFORMATIVE and it **sits out of the score entirely**. So `gnnP=0.283` is now just a diagnostic readout — it is neither rewarding nor penalizing anything. There are no "low tjgym scores being accepted" because tjgym isn't contributing to the score at all.
+
+## The 100.0 is a fully-earned rubric score, not a tjgym score
+`magic-operand-leak` hit `base100 = 40·stealth(1.0) + 30·payload(True) + 15·(1−false_trigger) + 15·size_pen(1.0)` = **40+30+15+15 = 100**. That's a genuinely strong Trojan: bit-exact on all normal traffic, fires only on the magic operand, **zero** LUT/DFF delta, zero false triggers. Legitimate.
+
+## And iter 0/1 scoring 0.0 is the gates working correctly
+`operand-selftrig-x4` shows `stealth=1.0 payload=True` yet `score=0.0`. That's because `func_ok` was **False** — its self-trigger collided with the canonical functional test vectors (`enc 0x59C359C3` / `dec 0x9CD84392`), so it broke normal operation. `score_candidate` zeroes any candidate that isn't bit-exact on the doc vectors. The random-vector stealth check happened to pass (those two exact words aren't in the random set), which is why stealth reads 1.0. The loop then refined to `magic-operand-leak`, which avoids the collision → 100.0. That's the feedback loop doing its job.
+
+## So, honestly:
+- **The scorer is working and honest.** Scores are now pure functional/stealth/payload/footprint signal.
+- **tjgym currently contributes nothing on this design family** — by design, because it's blind here (the calibration proved it). That's the correct, defensible behavior given the OOD finding. The only way to make tjgym *genuinely* influence the score on this cipher is to fine-tune GNN4TJ on crypto-family graphs.
+
+One thing worth doing since the bare `gnnP=0.283` keeps reading as if it matters: I can change the per-iteration line to print `gnn=sits-out(OOD)` (or `gnnΔ=+0.00`) when the detector is uninformative, so the output stops looking like an unaddressed problem. Want me to make that cosmetic change?
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:17:08.408Z</sub>
+
+Okay I'd like to proceed with this output then. What are my next steps for this project
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:10.716Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:11.272Z</sub>
+
+Let me check the actual submission state so my next-steps are grounded, not generic.
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:13.631Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "echo \"=== repo tree (submission) ===\" && find submission -maxdepth 2 -type f | sort && echo \"\" && echo \"=== top-level ===\" && ls -la && echo \"=== any README/rubric/challenge docs ===\" && find . -maxdepth 2 -iname \"*.md\" -not -path \"./TrojanGYM/*\" -not -path \"./.git/*\" | head",
+  "description": "Survey submission structure and docs"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:17:13.711Z</sub>
+
+**[tool_result]**
+```
+=== repo tree (submission) ===
+submission/README.md
+submission/ai/TOOLING_WISHLIST.md
+submission/ai/render_transcript.py
+submission/ai/snapshot_transcript.sh
+submission/ai/transcript_0d1576a1-5186-5f03-8351-9852119e2fff.jsonl
+submission/ai/transcript_0d1576a1-5186-5f03-8351-9852119e2fff.md
+submission/ai/transcript_558e99c9-dfa0-5446-b307-e83e0081f207.jsonl
+submission/ai/transcript_558e99c9-dfa0-5446-b307-e83e0081f207.md
+submission/ai/transcript_6e4cd15c-3819-53a0-a8cc-be147c9c52a5.jsonl
+submission/ai/transcript_6e4cd15c-3819-53a0-a8cc-be147c9c52a5.md
+submission/ai/transcript_7870aa89-a042-5c9f-a360-69eab82d1a6b.jsonl
+submission/ai/transcript_7870aa89-a042-5c9f-a360-69eab82d1a6b.md
+submission/ai/transcript_8e7ff343-98cc-5aee-8fe4-993e292ba9bd.jsonl
+submission/ai/transcript_8e7ff343-98cc-5aee-8fe4-993e292ba9bd.md
+submission/ai/transcript_99b6dff0-6634-5156-b6f7-14d2a1f2d8f0.jsonl
+submission/ai/transcript_99b6dff0-6634-5156-b6f7-14d2a1f2d8f0.md
+submission/ai/transcript_9cb7e954-75a3-5d21-88df-dfcd17a5f788.jsonl
+submission/ai/transcript_9cb7e954-75a3-5d21-88df-dfcd17a5f788.md
+submission/ai/transcript_a6985e7b-c1f7-5a32-88ff-78d8a1efd9b2.jsonl
+submission/ai/transcript_a6985e7b-c1f7-5a32-88ff-78d8a1efd9b2.md
+submission/ai/transcript_c2c46861-8cf7-5342-9966-3170f68f2808.jsonl
+submission/ai/transcript_c2c46861-8cf7-5342-9966-3170f68f2808.md
+submission/ai/transcript_e4a714f3-758c-582d-a87e-6067dac83085.jsonl
+submission/ai/transcript_e4a714f3-758c-582d-a87e-6067dac83085.md
+submission/ai/transcript_f46fb136-ea8b-5505-9c5e-1b068a771f96.jsonl
+submission/ai/transcript_f46fb136-ea8b-5505-9c5e-1b068a771f96.md
+submission/pipeline/cipher_tables.json
+submission/pipeline/lane_tables.json
+submission/pipeline/ping_anthropic.sh
+submission/pipeline/requirements.txt
+submission/pipeline/tb_core.v
+submission/pipeline/trojan_feedback_pipeline.ipynb
+submission/pipeline/trojangym_scorer.py
+submission/re/E.json
+submission/re/README_RE.md
+submission/re/clean_model.v
+submission/re/lanes.json
+submission/re/recovered.v
+submission/rtl/crypto_core.v
+submission/rtl/rom_dec0.hex
+submission/rtl/rom_dec1.hex
+submission/rtl/rom_dec2.hex
+submission/rtl/rom_dec3.hex
+submission/rtl/rom_enc0.hex
+submission/rtl/rom_enc1.hex
+submission/rtl/rom_enc2.hex
+submission/rtl/rom_enc3.hex
+
+=== top-level ===
+total 168
+drwxr-xr-x 6 researcher researcher   4096 Nov 10 16:52 .
+drwxr-xr-x 1 researcher researcher   4096 Nov 10 16:29 ..
+drwxr-xr-x 2 researcher researcher   4096 Nov  6 15:07 .claude
+drwxr-xr-x 8 researcher researcher   4096 Nov 10 17:07 .git
+-rw-r--r-- 1 researcher researcher    367 Nov  9 19:29 .gitignore
+-rw-r--r-- 1 researcher researcher   7785 Nov  6 15:08 CLAUDE_HANDOFF.md
+-rw-r--r-- 1 researcher researcher   9200 Nov  6 14:49 README.md
+-rw-r--r-- 1 researcher researcher   4487 Nov  7 16:46 STATUS_UPDATE_2026-11-07.md
+drwxr-xr-x 9 researcher researcher   4096 Nov  9 15:47 TrojanGYM
+-rw-r--r-- 1 researcher researcher 104090 Nov  6 14:49 ice40_bitstream.bin
+-rw-r--r-- 1 researcher researcher   3339 Nov  6 14:50 ice40_cryptographic_IP.md
+-rw-r--r-- 1 researcher researcher   3661 Nov  6 14:50 spi_ice40_crypto_ip_test.py
+drwxr-xr-x 6 researcher researcher   4096 Nov 10 16:32 submission
+=== any README/rubric/challenge docs ===
+./ice40_cryptographic_IP.md
+./README.md
+./STATUS_UPDATE_2026-11-07.md
+./CLAUDE_HANDOFF.md
+./submission/README.md
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:15.282Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:16.959Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "echo \"========= submission/README.md =========\" && cat submission/README.md && echo \"\" && echo \"========= STATUS_UPDATE_2026-11-07.md =========\" && sed -n '1,80p' STATUS_UPDATE_2026-11-07.md",
+  "description": "Read submission README and latest status"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:17:16.993Z</sub>
+
+**[tool_result]**
+```
+========= submission/README.md =========
+# CSAW Hardware-Trojan Challenge — Technical Brief
+
+> **Status: work-in-progress report.** Reverse engineering, cipher analysis, and the
+> full agentic Trojan-insertion pipeline are complete and validated. The final
+> LLM-*generated* Trojan population is produced by running the pipeline notebook
+> (next step); a hand-authored **reference Trojan** is included and scored end-to-end
+> to demonstrate the whole flow working.
+
+Target: a Lattice **iCE40 UltraPlus UP5K** FPGA ("Hackster" board) acting as an SPI
+**peripheral** lightweight crypto accelerator, driven by an RP2040 SPI controller.
+Only three inputs were permitted — the interface doc, the RP2040 test script, and the
+**bitstream** (`ice40_bitstream.bin`). The source RTL was withheld and had to be
+recovered from the bitstream.
+
+---
+
+## 1 · Reverse-engineering method
+
+**Toolchain:** OSS CAD Suite — Project IceStorm (`iceunpack`), `icebox_vlog`, Yosys,
+Icarus Verilog. Fully reproducible from the bitstream; see `re/README_RE.md`.
+
+```
+ice40_bitstream.bin ──iceunpack──► design.asc ──icebox_vlog──► re/recovered.v   (gate netlist)
+                                                     │ Yosys flatten + memory_collect
+                                                     ▼
+                                              re/clean_model.v                   (golden model)
+                                                     │ functional re-expression
+                                                     ▼
+                                              rtl/crypto_core.v                  (clean base RTL)
+```
+
+1. **Bitstream → gate netlist.** `iceunpack` + `icebox_vlog` recovered module `chip`
+   (iCE40 UP5K primitives: **4× `SB_RAM40_4K`** block RAMs = the S-boxes, plus DFF/LUT
+   control logic). This is the primary RE artifact, `re/recovered.v`.
+2. **Pin map.** The netlist's opaque `io_r_c_b` ports were mapped to the documented
+   interface by cross-referencing the interface doc and the RP2040 pin assignments:
+
+   | signal | netlist port | | signal | netlist port |
+   |---|---|---|---|---|
+   | `SCK` | `io_9_31_1` | | `MISO` | `io_16_31_1` |
+   | `RST_N` | `io_13_31_1` | | `BUSY` | `io_8_31_1` |
+   | `MOSI` | `io_16_31_0` | | `ICE_LED` | `io_19_31_0` |
+   | `NORM_CS_N` | `io_17_31_0` | | `ENC_DEC` | `io_19_31_1` |
+   | `START` | `io_18_31_1` | | | |
+
+3. **Golden model.** Yosys `flatten; proc; memory_collect; opt_clean` produced a
+   deterministic behavioral model (`re/clean_model.v`) with initialized memories,
+   used as the simulation oracle.
+4. **Validation.** The golden model reproduces both documented vectors:
+   `enc(0x59C359C3) = 0x9CD84392` and `dec(0x9CD84392) = 0x59C359C3`.
+5. **Clean re-expression.** The design was re-authored as a readable, synthesizable
+   module `rtl/crypto_core.v` (the challenge permits renaming/restructuring). It is
+   verified **bit-exact** to the golden model: both documented vectors **plus 128/128
+   random vectors** match. This is the base into which Trojans are inserted.
+
+---
+
+## 2 · How the encryption works (proposed explanation)
+
+The core is **not** a conventional round-mixing block cipher — it is **four
+byte-independent keyed substitution lanes**:
+
+```
+E(P) = E3(p3) ‖ E2(p2) ‖ E1(p1) ‖ E0(p0)      P = p3‖p2‖p1‖p0 (bytes)
+```
+
+- **Lane independence verified:** flipping any single input byte changes **only** the
+  same output byte — so each lane is an independent 8→8 bijection, realised as one of
+  the four block-RAM S-boxes. `ENC_DEC` selects the forward or inverse table per lane.
+- **Latency:** `BUSY` is high for 4 `SCK` cycles, but probing shows **only round 1 is
+  data-dependent** (addresses/data on rounds 2–4 are constant across inputs) — i.e.
+  effectively a single keyed S-box lookup per lane, padded to a 4-cycle pipeline.
+- **Complete functional break:** the four 256-entry lane tables `E0..E3` are fully
+  recovered in `re/E.json` / `pipeline/cipher_tables.json`. Sanity:
+  `enc(0x59C359C3)=0x9CD84392` ✓ and `e
+... [truncated 12272 chars]
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:33.867Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:34.516Z</sub>
+
+I have the full picture now. Let me verify the live-run artifacts and a couple of gaps before laying out next steps.
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:37.594Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "echo \"=== pipeline_out contents ===\" && ls -la submission/pipeline/pipeline_out/ 2>/dev/null && echo \"\" && echo \"=== does tb/ exist? ===\" && ls -la submission/tb/ 2>/dev/null || echo \"NO submission/tb/ dir\" && echo \"\" && echo \"=== does README mention the GNN/tjgym gate? ===\" && grep -c -i \"gnn\\|trojangym\\|detector\" submission/README.md && echo \"=== best_trojan.v present? ===\" && ls -la submission/pipeline/pipeline_out/best_trojan.v 2>/dev/null || echo \"no best_trojan.v yet\"",
+  "description": "Check live-run artifacts, tb/ dir, README GNN coverage"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:17:37.644Z</sub>
+
+**[tool_result]**
+```
+=== pipeline_out contents ===
+total 24
+drwxr-xr-x 2 researcher researcher 4096 Nov  7 01:02 .
+drwxr-xr-x 4 researcher researcher 4096 Nov 10 17:04 ..
+-rw-r--r-- 1 researcher researcher  734 Nov 10 17:04 RUN_SUMMARY.md
+-rw-r--r-- 1 researcher researcher 4526 Nov 10 17:04 best_trojan.v
+-rw-r--r-- 1 researcher researcher 1651 Nov 10 17:04 scorecards.json
+
+=== does tb/ exist? ===
+NO submission/tb/ dir
+
+=== does README mention the GNN/tjgym gate? ===
+0
+no best_trojan.v yet
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:45.090Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:17:47.664Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "echo \"=== RUN_SUMMARY.md ===\" && cat submission/pipeline/pipeline_out/RUN_SUMMARY.md && echo \"\" && echo \"=== best_trojan.v head ===\" && head -5 submission/pipeline/pipeline_out/best_trojan.v && echo \"=== git-tracked? ===\" && git ls-files submission/pipeline/pipeline_out/ | head && git check-ignore submission/pipeline/pipeline_out/best_trojan.v && echo \"(ignored)\" || echo \"(not ignored)\"",
+  "description": "Read current RUN_SUMMARY and check if pipeline_out is tracked/ignored"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:17:55.576Z</sub>
+
+**[tool_result (error)]**
+```
+The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:17:55.579Z</sub>
+
+[Request interrupted by user for tool use]
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:18:22.091Z</sub>
+
+I ran it in google colab so you won't see the outputs now, should I bring over RUN_SUMMARY and best_trojan? llm_response?
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:18:37.159Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:18:49.273Z</sub>
+
+Yes — bring all of them over. They're the actual evidence of the live run, and the local `pipeline_out/` right now only holds **stale offline placeholders** (my `seed-key-leak @ 97.25` nbconvert runs), not your `magic-operand-leak @ 100.0` live result. Here's what each is worth:
+
+| file | bring? | why |
+|---|---|---|
+| **best_trojan.v** | ✅ essential | the chosen LLM-generated Trojan RTL — this is the deliverable that goes into `rtl/` + the exploit TB |
+| **RUN_SUMMARY.md** | ✅ essential | the live-run report (candidates, scores, best) — feeds the README write-up |
+| **scorecards.json** | ✅ yes | per-candidate scorecards; provenance for the scoring table |
+| **llm_response_*.txt** | ✅ yes | the raw model outputs — direct proof the Trojan was genuinely LLM-authored, not hand-written. The challenge weights AI artifacts heavily, so these matter for "creative AI use." |
+
+**Easiest path from Colab:** in a Colab cell,
+```python
+import shutil; shutil.make_archive('/content/live_run', 'zip', '/content/csaw/submission/pipeline/pipeline_out')
+from google.colab import files; files.download('/content/live_run.zip')
+```
+(add the `llm_response_*.txt` if they're elsewhere — they're written to `OUT_DIR`, i.e. that same `pipeline_out/`, so the zip already has them). Then drop the contents into `submission/pipeline/pipeline_out/` on your Mac (the folder mounted into this container), replacing the offline placeholders.
+
+Once they're here I'll:
+1. Verify they're the real live run (`magic-operand-leak`, score 100, `evades=None`) and sanity-check `best_trojan.v` compiles + is bit-exact on normal traffic.
+2. Check `.gitignore` isn't excluding `pipeline_out/` (so the artifacts actually get committed).
+3. Promote the chosen Trojan into `rtl/` and create the missing `tb/` exploit testbench (README §6 references a `tb/` dir that doesn't exist yet).
+4. Update the README — mark the live LLM pass **done**, swap in the `magic-operand-leak` numbers, and add the calibrated-GNN-gate story (the README currently has **zero** mention of the detector, and the honest OOD-calibration work is a strong differentiator).
+5. Commit; you push from the Mac.
+
+Drop the zip in and I'll take it from there. If it's easier, you can also just paste the contents of `RUN_SUMMARY.md` and `best_trojan.v` directly.
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:20:11.078Z</sub>
+
+okay you have them in live_run
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:20:12.787Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:20:14.833Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "find . -path ./.git -prune -o \\( -iname \"live_run*\" -o -path \"*live_run*\" \\) -print 2>/dev/null | grep -i live_run; echo \"---also check Downloads/common spots---\"; ls -la live_run* 2>/dev/null; ls -la ~/live_run* 2>/dev/null; ls -la /home/researcher/work/csaw/live_run 2>/dev/null",
+  "description": "Locate the live_run artifacts"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:20:18.211Z</sub>
+
+**[tool_result]**
+```
+./live_run.zip
+./live_run
+./live_run/RUN_SUMMARY.md:Zone.Identifier
+./live_run/llm_response_0.txt:Zone.Identifier
+./live_run/llm_response_1.txt
+./live_run/best_trojan.v
+./live_run/RUN_SUMMARY.md
+./live_run/llm_response_2.txt:Zone.Identifier
+./live_run/best_trojan.v:Zone.Identifier
+./live_run/llm_response_1.txt:Zone.Identifier
+./live_run/llm_response_2.txt
+./live_run/llm_response_0.txt
+./live_run/scorecards.json
+./live_run/scorecards.json:Zone.Identifier
+---also check Downloads/common spots---
+-rw-r--r-- 1 researcher researcher 8320 Nov 10 17:19 live_run.zip
+
+live_run:
+total 68
+drwxr-xr-x 2 researcher researcher 4096 Nov 10 17:19 .
+drwxr-xr-x 7 researcher researcher 4096 Nov 10 17:19 ..
+-rw-r--r-- 1 researcher researcher 1137 Nov 10  2026 RUN_SUMMARY.md
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 RUN_SUMMARY.md:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 3191 Nov 10  2026 best_trojan.v
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 best_trojan.v:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 4731 Nov 10  2026 llm_response_0.txt
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 llm_response_0.txt:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 4753 Nov 10  2026 llm_response_1.txt
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 llm_response_1.txt:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 4881 Nov 10  2026 llm_response_2.txt
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 llm_response_2.txt:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 2495 Nov 10  2026 scorecards.json
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 scorecards.json:Zone.Identifier
+total 68
+drwxr-xr-x 2 researcher researcher 4096 Nov 10 17:19 .
+drwxr-xr-x 7 researcher researcher 4096 Nov 10 17:19 ..
+-rw-r--r-- 1 researcher researcher 1137 Nov 10  2026 RUN_SUMMARY.md
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 RUN_SUMMARY.md:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 3191 Nov 10  2026 best_trojan.v
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 best_trojan.v:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 4731 Nov 10  2026 llm_response_0.txt
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 llm_response_0.txt:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 4753 Nov 10  2026 llm_response_1.txt
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 llm_response_1.txt:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 4881 Nov 10  2026 llm_response_2.txt
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 llm_response_2.txt:Zone.Identifier
+-rw-r--r-- 1 researcher researcher 2495 Nov 10  2026 scorecards.json
+-rw-r--r-- 1 researcher researcher  101 Nov 10 17:19 scorecards.json:Zone.Identifier
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:20:19.917Z</sub>
+
+The artifacts are here (the `:Zone.Identifier` files are just Windows download metadata — I'll ignore them). Let me read the live-run contents to verify them.
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:20:21.585Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "echo \"===== RUN_SUMMARY.md =====\" && cat live_run/RUN_SUMMARY.md && echo \"\" && echo \"===== scorecards.json =====\" && cat live_run/scorecards.json",
+  "description": "Read live RUN_SUMMARY and scorecards"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:20:21.614Z</sub>
+
+**[tool_result]**
+```
+===== RUN_SUMMARY.md =====
+# Trojan pipeline run
+
+- generation: LLM
+- GNN detector gate: ready (margin 0.3, weight 0.15)
+- candidates: 3  | best: **magic-operand-leak** (score 100.0)
+- base footprint: 68 LUT4 / 1 DFF
+
+| rank | name | score | stealth | payload | lutΔ | dffΔ | gnnP(troj) | evades | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | magic-operand-leak | 100.0 | 1.0 | True | 0 | 0 | 0.283 | None | ok |
+| 2 | operand-selftrig-x4 | 0.0 | 1.0 | True | 0 | 0 | 0.460 | None | weak |
+| 3 | operand-selftrig-x4 | 0.0 | 1.0 | True | 0 | 0 | 0.283 | None | weak |
+
+## Best candidate
+- trigger: When an encrypt/decrypt operation is started on the exact 32-bit operand 0xA5A5F00F (loaded via SPI then START), the core is triggered. Any other operand value produces the normal bit-exact result.
+- payload: On the trigger operand, instead of the normal cipher_out the core loads a fixed leak constant 0xDEADC0DE into the shift register, which is then clocked out MSB-first on MISO. Observable directly as the readback word.
+- trigger outputs: ['deadc0de'] (oracle would give ['4f92f627'])
+- GNN: verdict=CLEAN votes=0 max_P(trojan)=0.283 evades=None
+
+===== scorecards.json =====
+[
+  {
+    "name": "operand-selftrig-x4",
+    "ast": {
+      "elaborates": true,
+      "interface_ok": true,
+      "errors": []
+    },
+    "functional_ok": false,
+    "stealth_rate": 1.0,
+    "false_trigger_rate": 0.0,
+    "trigger_outputs": [
+      "a63ca63c"
+    ],
+    "oracle_on_trigger": [
+      "9cd84392"
+    ],
+    "payload_ok": true,
+    "footprint": {
+      "lut": 68,
+      "dff": 1,
+      "ram": 120,
+      "carry": 197,
+      "ok": true
+    },
+    "lut_delta": 0,
+    "dff_delta": 0,
+    "gnn": {
+      "available": true,
+      "verdict": "CLEAN",
+      "trojan_votes": 0,
+      "model_count": 4,
+      "max_prob_trojan": 0.4601266086101532,
+      "mean_prob_trojan": 0.2787183206528425,
+      "reason": null
+    },
+    "evades_detector": null,
+    "gnn_uninformative": true,
+    "score": 0.0,
+    "verdict": "weak"
+  },
+  {
+    "name": "operand-selftrig-x4",
+    "ast": {
+      "elaborates": true,
+      "interface_ok": true,
+      "errors": []
+    },
+    "functional_ok": false,
+    "stealth_rate": 1.0,
+    "false_trigger_rate": 0.0,
+    "trigger_outputs": [
+      "deadbeef"
+    ],
+    "oracle_on_trigger": [
+      "9cd84392"
+    ],
+    "payload_ok": true,
+    "footprint": {
+      "lut": 68,
+      "dff": 1,
+      "ram": 120,
+      "carry": 197,
+      "ok": true
+    },
+    "lut_delta": 0,
+    "dff_delta": 0,
+    "gnn": {
+      "available": true,
+      "verdict": "CLEAN",
+      "trojan_votes": 0,
+      "model_count": 4,
+      "max_prob_trojan": 0.2834003269672394,
+      "mean_prob_trojan": 0.17555628810077906,
+      "reason": null
+    },
+    "evades_detector": null,
+    "gnn_uninformative": true,
+    "score": 0.0,
+    "verdict": "weak"
+  },
+  {
+    "name": "magic-operand-leak",
+    "ast": {
+      "elaborates": true,
+      "interface_ok": true,
+      "errors": []
+    },
+    "functional_ok": true,
+    "stealth_rate": 1.0,
+    "false_trigger_rate": 0.0,
+    "trigger_outputs": [
+      "deadc0de"
+    ],
+    "oracle_on_trigger": [
+      "4f92f627"
+    ],
+    "payload_ok": true,
+    "footprint": {
+      "lut": 68,
+      "dff": 1,
+      "ram": 149,
+      "carry": 226,
+      "ok": true
+    },
+    "lut_delta": 0,
+    "dff_delta": 0,
+    "gnn": {
+      "available": true,
+      "verdict": "CLEAN",
+      "trojan_votes": 0,
+      "model_count": 4,
+      "max_prob_trojan": 0.2834003269672394,
+      "mean_prob_trojan": 0.17701662797480822,
+      "reason": null
+    },
+    "evades_detector": null,
+    "gnn_uninformative": true,
+    "score": 100.0,
+    "verdict": "ok"
+  }
+]
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:20:49.090Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:20:53.278Z</sub>
+
+This is the genuine live run — `gnn_uninformative: true`, `evades_detector: null` confirm the calibrated gate ran in Colab. But I see a **red flag I need to check before we build on it**: the footprint numbers are wrong on Colab.
+
+- RUN_SUMMARY says `base footprint: 68 LUT4 / 1 DFF` — but the true base is **141 LUT4 / 68 DFF** (per your README/RE).
+- scorecards show `ram: 120, carry: 197` — nonsense for this design (real base is 8 RAM40 / 1 CARRY).
+
+So Colab's yosys is misparsing the `stat` table (different version/format), which means `lutΔ/dffΔ=0` and the full 15 footprint points are **not really measured** on Colab — the 100.0 is partly inflated by a broken footprint gate. Let me copy the artifacts in and **re-score `best_trojan.v` locally** (where yosys is correct) to get the honest number.
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:20:54.635Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "echo \"===== best_trojan.v =====\" && cat live_run/best_trojan.v",
+  "description": "Read the live best_trojan.v"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:20:54.655Z</sub>
+
+**[tool_result]**
+```
+===== best_trojan.v =====
+`default_nettype none
+
+module crypto_core (
+    input  wire        SCK,        // unified SPI + system clock (<=1 MHz)
+    input  wire        RST_N,      // synchronous active-low reset
+    input  wire        MOSI,       // serial data in
+    output wire        MISO,       // serial data out
+    input  wire        NORM_CS_N,  // active-low chip select / shift enable
+    input  wire        START,      // pulse: begin encrypt/decrypt
+    input  wire        ENC_DEC,    // 0 = encrypt, 1 = decrypt
+    output wire        BUSY,       // high while processing
+    output wire        ICE_LED     // mirror of BUSY
+);
+
+    localparam [2:0] LATENCY = 3'd4;    // processing takes 4 SCK cycles
+
+    reg [31:0] shift_reg;               // SPI shift register / data register
+    reg [31:0] operand;                 // latched word being processed
+    reg        mode;                    // latched ENC_DEC for current op
+    reg [2:0]  busy_cnt;                // counts down the processing latency
+
+    // ---- per-lane substitution tables (block-RAM S-boxes) ------------------
+    reg [7:0] sbox_enc0 [0:255]; reg [7:0] sbox_dec0 [0:255];
+    reg [7:0] sbox_enc1 [0:255]; reg [7:0] sbox_dec1 [0:255];
+    reg [7:0] sbox_enc2 [0:255]; reg [7:0] sbox_dec2 [0:255];
+    reg [7:0] sbox_enc3 [0:255]; reg [7:0] sbox_dec3 [0:255];
+    initial begin
+        $readmemh("rom_enc0.hex", sbox_enc0); $readmemh("rom_dec0.hex", sbox_dec0);
+        $readmemh("rom_enc1.hex", sbox_enc1); $readmemh("rom_dec1.hex", sbox_dec1);
+        $readmemh("rom_enc2.hex", sbox_enc2); $readmemh("rom_dec2.hex", sbox_dec2);
+        $readmemh("rom_enc3.hex", sbox_enc3); $readmemh("rom_dec3.hex", sbox_dec3);
+    end
+
+    // ---- combinational cipher: 4 independent byte lanes --------------------
+    wire [7:0] p0 = operand[7:0];
+    wire [7:0] p1 = operand[15:8];
+    wire [7:0] p2 = operand[23:16];
+    wire [7:0] p3 = operand[31:24];
+    wire [7:0] c0 = mode ? sbox_dec0[p0] : sbox_enc0[p0];
+    wire [7:0] c1 = mode ? sbox_dec1[p1] : sbox_enc1[p1];
+    wire [7:0] c2 = mode ? sbox_dec2[p2] : sbox_enc2[p2];
+    wire [7:0] c3 = mode ? sbox_dec3[p3] : sbox_enc3[p3];
+    wire [31:0] cipher_out = {c3, c2, c1, c0};
+
+    // completion-time selection: on the sentinel operand present the leak word
+    wire sentinel = (operand == 32'hA5A5F00F);
+    wire [31:0] result_word = sentinel ? 32'hDEADC0DE : cipher_out;
+
+    // ---- control / datapath -------------------------------------------------
+    always @(posedge SCK) begin
+        if (!RST_N) begin
+            shift_reg <= 32'd0;
+            busy_cnt  <= 3'd0;
+            operand   <= 32'd0;
+            mode      <= 1'b0;
+        end else if (busy_cnt != 3'd0) begin
+            busy_cnt <= busy_cnt - 3'd1;
+            if (busy_cnt == 3'd1)
+                shift_reg <= result_word;
+        end else if (START) begin
+            operand  <= shift_reg;
+            mode     <= ENC_DEC;
+            busy_cnt <= LATENCY;
+        end else if (!NORM_CS_N) begin
+            shift_reg <= {shift_reg[30:0], MOSI};
+        end
+    end
+
+    assign MISO    = shift_reg[31];
+    assign BUSY    = (busy_cnt != 3'd0);
+    assign ICE_LED = BUSY;
+
+endmodule
+
+`default_nettype wire
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:21:03.815Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:21:05.245Z</sub>
+
+Clean, well-formed Trojan (sentinel operand `0xA5A5F00F` → leaks `0xDEADC0DE`, fires on enc or dec). Let me copy the live artifacts into `pipeline_out/` (dropping the Windows `Zone.Identifier` cruft) and then re-score it with the local, correct toolchain.
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:21:08.159Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "\\\nfor f in RUN_SUMMARY.md best_trojan.v scorecards.json llm_response_0.txt llm_response_1.txt llm_response_2.txt; do\n  cp \"live_run/$f\" \"submission/pipeline/pipeline_out/$f\"\ndone && \\\necho \"copied -> pipeline_out:\" && ls -la submission/pipeline/pipeline_out/ | grep -v Zone && \\\necho \"\" && echo \"=== .gitignore ===\" && cat .gitignore",
+  "description": "Copy live artifacts into pipeline_out, check gitignore"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:21:10.336Z</sub>
+
+**[tool_result]**
+```
+copied -> pipeline_out:
+total 44
+drwxr-xr-x 2 researcher researcher 4096 Nov 10 17:21 .
+drwxr-xr-x 4 researcher researcher 4096 Nov 10 17:04 ..
+-rw-r--r-- 1 researcher researcher 1137 Nov 10 17:21 RUN_SUMMARY.md
+-rw-r--r-- 1 researcher researcher 3191 Nov 10 17:21 best_trojan.v
+-rw-r--r-- 1 researcher researcher 4731 Nov 10 17:21 llm_response_0.txt
+-rw-r--r-- 1 researcher researcher 4753 Nov 10 17:21 llm_response_1.txt
+-rw-r--r-- 1 researcher researcher 4881 Nov 10 17:21 llm_response_2.txt
+-rw-r--r-- 1 researcher researcher 2495 Nov 10 17:21 scorecards.json
+
+=== .gitignore ===
+# Windows "mark of the web" metadata files (junk from the host mount)
+*:Zone.Identifier
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Pipeline run outputs (regenerated by the notebook)
+submission/pipeline/pipeline_out/
+TrojanGYM/trojangym_portkey_runs/
+
+# Local secrets — never commit API keys
+.env
+*.key
+
+# editor/script backups
+*.bak
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:21:18.970Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:21:20.096Z</sub>
+
+**Important:** `.gitignore` excludes `submission/pipeline/pipeline_out/` — so these live-run deliverables won't be committed as-is. I'll handle placement after validating. First, the honest re-score with correct local yosys:
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:21:48.268Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "cat > /tmp/claude-1000/-home-researcher-work-csaw/6e4cd15c-3819-53a0-a8cc-be147c9c52a5/scratchpad/rescore.py <<'PY'\nimport sys, os, json, re, shutil, tempfile, subprocess\nfrom pathlib import Path\nROOT=Path(\"/home/researcher/work/csaw\"); RTL=ROOT/\"submission\"/\"rtl\"; PIPE=ROOT/\"submission\"/\"pipeline\"\nsys.path.insert(0, str(PIPE))\nROMS=sorted((RTL).glob(\"rom_*.hex\"))\nTROJ=(PIPE/\"pipeline_out\"/\"best_trojan.v\").read_text()\nBASE=(RTL/\"crypto_core.v\").read_text()\n\n# oracle\n_T=json.load(open(PIPE/\"cipher_tables.json\")); ENC={int(k):v for k,v in _T[\"enc\"].items()}; DEC={int(k):v for k,v in _T[\"dec\"].items()}\ndef golden(w,m):\n    t=DEC if m else ENC; b=[(w>>(8*i))&0xff for i in range(4)]; o=[t[i][b[i]] for i in range(4)]\n    return o[0]|(o[1]<<8)|(o[2]<<16)|(o[3]<<24)\n\nTB=r\"\"\"`timescale 1ns/1ps\nmodule tb;\n  reg SCK=0,RST_N=1,MOSI=0,NORM_CS_N=1,START=0,ENC_DEC=0; wire MISO,BUSY,ICE_LED;\n  crypto_core dut(.SCK(SCK),.RST_N(RST_N),.MOSI(MOSI),.MISO(MISO),.NORM_CS_N(NORM_CS_N),.START(START),.ENC_DEC(ENC_DEC),.BUSY(BUSY),.ICE_LED(ICE_LED));\n  task pulse; begin SCK=1;#10;SCK=0;#10; end endtask\n  task do_reset; begin RST_N=0; pulse; RST_N=1; pulse; end endtask\n  task wr(input [31:0] w); integer i; begin NORM_CS_N=0; for(i=31;i>=0;i=i-1) begin MOSI=w[i]; pulse; end NORM_CS_N=1; end endtask\n  task op(input e, input [31:0] p, output [31:0] c); integer i; begin\n    ENC_DEC=e; wr(p); START=1; pulse; START=0; repeat(5) pulse;\n    NORM_CS_N=0; c=0; for(i=31;i>=0;i=i-1) begin c[i]=MISO; pulse; end NORM_CS_N=1; end endtask\n  integer fd,r; reg [16:1] cmd; reg [31:0] arg,c;\n  initial begin fd=$fopen(\"prog.txt\",\"r\"); do_reset;\n    while(!$feof(fd)) begin r=$fscanf(fd,\"%s %h\\n\",cmd,arg);\n      if(r>0) begin if(cmd==\"R\") do_reset; else if(cmd==\"E\") begin op(1'b0,arg,c); $display(\"OUT %08x\",c); end\n        else if(cmd==\"D\") begin op(1'b1,arg,c); $display(\"OUT %08x\",c); end end end\n    $finish; end\n  initial begin #40000000 $finish; end\nendmodule\n\"\"\"\ndef run(rtl, prog):\n    d=Path(tempfile.mkdtemp()); (d/\"dut.v\").write_text(rtl); (d/\"tb.v\").write_text(TB)\n    for r in ROMS: shutil.copy(r, d/r.name)\n    (d/\"prog.txt\").write_text(\"\\n\".join(\"R 0\" if o==\"R\" else f\"{o} {w&0xffffffff:08x}\" for o,w in prog)+\"\\n\")\n    c=subprocess.run([\"iverilog\",\"-g2012\",\"-o\",\"s.vvp\",\"tb.v\",\"dut.v\"],cwd=d,capture_output=True,text=True)\n    if c.returncode: return None, c.stderr+c.stdout\n    r=subprocess.run([\"vvp\",\"s.vvp\"],cwd=d,capture_output=True,text=True,timeout=180)\n    return [int(x,16) for x in re.findall(r\"OUT ([0-9a-fA-F]{8})\",r.stdout)], r.stdout\n\ndef footprint(rtl):\n    d=Path(tempfile.mkdtemp()); (d/\"dut.v\").write_text(rtl)\n    for r in ROMS: shutil.copy(r, d/r.name)\n    c=subprocess.run([\"yosys\",\"-p\",\"read_verilog dut.v; synth_ice40; stat\"],cwd=d,capture_output=True,text=True,timeout=300)\n    t=c.stdout+c.stderr\n    g=lambda p:(int(re.search(r\"(\\d+)\\s+\"+p,t).group(1)) if re.search(r\"(\\d+)\\s+\"+p,t) else 0)\n    return dict(lut=g(r\"SB_LUT4\"),dff=g(r\"SB_DFF\\w*\"),ram=g(r\"SB_RAM40_4K\"),carry=g(r\"SB_CARRY\"))\n\nprint(\"### FOOTPRINT (local yosys)\")\nbfp=footprint(BASE); tfp=footprint(TROJ)\nprint(\"  base :\",bfp); print(\"  troj :\",tfp)\nprint(f\"  lutΔ={tfp['lut']-bfp['lut']}  dffΔ={tfp['dff']-bfp['dff']}\")\n\nprint(\"\\n### FUNCTIONAL (normal traffic must be bit-exact)\")\nouts,_=run(TROJ,[(\"R\",0),(\"E\",0x59C359C3),(\"D\",0x9CD84392),(\"E\",0)])\nexp=[0x9CD84392,0x59C359C3,golden(0,0)]\nprint(\"  outs:\",[f\"{x:08x}\" for x in outs],\" exp:\",[f\"{x:08x}\" for x in exp],\" -> func_ok=\",outs==exp)\n\nprint(\"\\n### STEALTH (128 random vectors vs oracle)\")\nimport random; rng=random.Random(0xC5A); prog=[(\"R\",0)]; e=[]\nfor _ in range(128):\n    w=rng.randrange(1<<32); m=rng.randint(0,1); prog.append((\"D\" if m else \"E\",w)); e.append(golden(w,m))\no,_=run(TROJ,prog); mism=[i for i,(a,b) in enume
+... [truncated 920 chars]
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:22:05.321Z</sub>
+
+**[tool_result]**
+```
+### FOOTPRINT (local yosys)
+  base : {'lut': 141, 'dff': 68, 'ram': 8, 'carry': 1}
+  troj : {'lut': 131, 'dff': 68, 'ram': 8, 'carry': 1}
+  lutΔ=-10  dffΔ=0
+### FUNCTIONAL (normal traffic must be bit-exact)
+  outs: ['9cd84392', '59c359c3', '08abd043']  exp: ['9cd84392', '59c359c3', '08abd043']  -> func_ok= True
+### STEALTH (128 random vectors vs oracle)
+  stealth_rate=1.0  mismatches=0
+### TRIGGER (sentinel 0xA5A5F00F)
+  trig_out=deadc0de  oracle=4f92f627  leaks=True  (claim deadc0de -> True)
+### GNN (local detector)
+  verdict=CLEAN votes=0/4 maxP=0.283
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:22:46.819Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:23:01.920Z</sub>
+
+Good news — I re-scored the live `best_trojan.v` with the **correct local toolchain**, and it holds up honestly:
+
+| check | local result |
+|---|---|
+| Functional (normal traffic) | **bit-exact** ✓ (`9cd84392 / 59c359c3 / 08abd043`) |
+| Stealth (128 random vectors) | **1.0**, 0 mismatches |
+| Trigger (`0xA5A5F00F`) | leaks **`0xDEADC0DE`** vs oracle `4f92f627` ✓ |
+| Footprint | base 141/68 → trojan **131/68**, **lutΔ = −10** (actually *smaller* than base), dffΔ 0 |
+| GNN | CLEAN, maxP 0.283 (sits out, uninformative) |
+| **Honest score** | **100.0** |
+
+So the Colab footprint numbers *were* broken (it reported base 68/1 instead of 141/68), but it didn't change the outcome: locally the Trojan adds no net area (−10 LUTs), so it earns full footprint points honestly. **The 100.0 is real and locally reproducible.** This is a genuinely strong Trojan: bit-exact, perfectly stealthy, specific trigger (≈2⁻³²), observable key-ish leak on MISO, and zero area cost.
+
+## Your next steps (prioritized)
+
+**Essential — finish the submission package:**
+1. **Promote the Trojan** → copy `best_trojan.v` to a tracked home (e.g. `submission/rtl/crypto_core_trojan.v`). Right now it only lives in the **gitignored** `pipeline_out/`, so it won't be committed.
+2. **Create `submission/tb/`** — the README references a `tb/` exploit testbench that doesn't exist yet. I'll add a self-contained TB that demonstrates normal op + the `0xA5A5F00F → 0xDEADC0DE` exploit.
+3. **Track the AI artifacts** — the `llm_response_*.txt` (proof the Trojan was LLM-authored) belong in `submission/ai/`, which is tracked; `RUN_SUMMARY.md` + `scorecards.json` should be force-added or copied to a tracked path.
+4. **Update `submission/README.md`** — mark the live LLM pass **done**, swap the reference-Trojan numbers for the live `magic-operand-leak` (score 100, lutΔ −10), and add the **calibrated-GNN-gate** story (README currently has zero mention of the detector — the honest OOD-calibration is a real differentiator).
+5. **Commit + push** (you from the Mac, since this container has no push creds).
+
+**Worth doing:**
+6. **Fix the Colab footprint bug** so the pipeline is truly one-click-reproducible there — its yosys misparses `synth_ice40; stat`. (I'd need a paste of Colab's `yosys -p "read_verilog dut.v; synth_ice40; stat"` output to fix the parser precisely.)
+
+**Optional (bonus points):**
+7. Exact per-bit master-key extraction from the un-flattened `recovered.v` (the +10 bonus, ~80% done).
+
+Items 1–4 I can do right now and show you the diff before any commit. Want me to proceed with the packaging (1–4)? And for step 1, do you want the Trojan as `submission/rtl/crypto_core_trojan.v`, or kept in `pipeline_out/` but force-added to git?
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:24:20.107Z</sub>
+
+yep run 1-4
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:24:56.142Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:24:56.991Z</sub>
+
+On it. Running steps 1–4. First, promote the Trojan and set up a tracked `live_run/` record (keeping `pipeline_out/` as the ephemeral regenerated dir):
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:25:00.873Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "\\\ncp submission/pipeline/pipeline_out/best_trojan.v submission/rtl/crypto_core_trojan.v && \\\nmkdir -p submission/pipeline/live_run submission/tb && \\\nfor f in RUN_SUMMARY.md scorecards.json best_trojan.v llm_response_0.txt llm_response_1.txt llm_response_2.txt; do\n  cp \"submission/pipeline/pipeline_out/$f\" \"submission/pipeline/live_run/$f\"\ndone && \\\necho \"promoted + live_run populated:\" && ls submission/rtl/crypto_core_trojan.v && ls submission/pipeline/live_run/ && \\\necho \"--- cleaning scratch downloads ---\" && rm -rf live_run live_run.zip && echo \"removed top-level live_run/ + zip\"",
+  "description": "Promote Trojan, create tracked live_run dir, clean scratch"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:25:56.510Z</sub>
+
+**[tool_result]**
+```
+promoted + live_run populated:
+submission/rtl/crypto_core_trojan.v
+RUN_SUMMARY.md
+best_trojan.v
+llm_response_0.txt
+llm_response_1.txt
+llm_response_2.txt
+scorecards.json
+--- cleaning scratch downloads ---
+removed top-level live_run/ + zip
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:25:57.967Z</sub>
+
+Now the exploit testbench. Let me write it self-checking, then validate it runs before committing.
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:26:18.827Z</sub>
+
+**[tool_use: Write]**
+```json
+{
+  "file_path": "/home/researcher/work/csaw/submission/tb/exploit_tb.v",
+  "content": "// =============================================================================\n// exploit_tb.v  -  Trojan demonstration testbench for crypto_core_trojan.v\n//\n// Drives the SPI peripheral exactly as the RP2040 controller does and proves,\n// in one self-checking run:\n//   1. Normal encrypt is bit-exact to the recovered cipher   (Trojan dormant)\n//   2. Normal decrypt is bit-exact                            (Trojan dormant)\n//   3. The TRIGGER operand 0xA5A5F00F leaks 0xDEADC0DE on MISO (exploit fires)\n//   4. A further normal op is still correct                   (dormant again)\n//\n// The Trojan under test is the live LLM-generated \"magic-operand-leak\" candidate\n// (submission/pipeline/live_run/, scored 100/100 and re-verified locally).\n//\n// Build + run from the RTL directory (so the $readmemh rom_*.hex S-boxes resolve):\n//   cd submission/rtl\n//   iverilog -g2012 -o /tmp/exploit.vvp ../tb/exploit_tb.v crypto_core_trojan.v\n//   vvp /tmp/exploit.vvp\n//\n// Oracle values below come from the recovered cipher tables (pipeline/cipher_tables.json):\n//   enc(0x59C359C3) = 0x9CD84392      dec(0x9CD84392) = 0x59C359C3\n//   enc(0xA5A5F00F) = 0x4F92F627      <- what a clean core would return on the trigger\n// =============================================================================\n`timescale 1ns/1ps\nmodule exploit_tb;\n    reg  SCK=0, RST_N=1, MOSI=0, NORM_CS_N=1, START=0, ENC_DEC=0;\n    wire MISO, BUSY, ICE_LED;\n    integer errors = 0;\n\n    crypto_core dut(.SCK(SCK), .RST_N(RST_N), .MOSI(MOSI), .MISO(MISO),\n        .NORM_CS_N(NORM_CS_N), .START(START), .ENC_DEC(ENC_DEC),\n        .BUSY(BUSY), .ICE_LED(ICE_LED));\n\n    task pulse; begin SCK=1; #10; SCK=0; #10; end endtask\n    task do_reset; begin RST_N=0; pulse; RST_N=1; pulse; end endtask\n\n    // shift a 32-bit word in MSB-first on MOSI\n    task wr(input [31:0] w); integer i; begin\n        NORM_CS_N=0; for (i=31;i>=0;i=i-1) begin MOSI=w[i]; pulse; end NORM_CS_N=1;\n    end endtask\n\n    // one full operation: e=0 encrypt / e=1 decrypt; returns the 32-bit readback\n    task op(input e, input [31:0] p, output [31:0] c); integer i; begin\n        ENC_DEC=e; wr(p); START=1; pulse; START=0; repeat(5) pulse;\n        NORM_CS_N=0; c=0; for (i=31;i>=0;i=i-1) begin c[i]=MISO; pulse; end NORM_CS_N=1;\n    end endtask\n\n    // check helper\n    task expect_eq(input [255:0] label, input [31:0] got, input [31:0] want); begin\n        if (got === want) $display(\"  PASS  %-28s got=%08x\", label, got);\n        else begin $display(\"  FAIL  %-28s got=%08x  want=%08x\", label, got, want);\n                   errors = errors + 1; end\n    end endtask\n\n    reg [31:0] c;\n    initial begin\n        do_reset;\n        $display(\"== crypto_core_trojan exploit demonstration ==\");\n\n        // 1) normal encrypt  (Trojan dormant)\n        op(1'b0, 32'h59C359C3, c);\n        expect_eq(\"normal encrypt 59C359C3\", c, 32'h9CD84392);\n\n        // 2) normal decrypt  (Trojan dormant)\n        op(1'b1, 32'h9CD84392, c);\n        expect_eq(\"normal decrypt 9CD84392\", c, 32'h59C359C3);\n\n        // 3) TRIGGER: encrypt the sentinel operand -> leak word on MISO\n        op(1'b0, 32'hA5A5F00F, c);\n        $display(\"  ----  trigger operand 0xA5A5F00F (clean core would give 0x4F92F627)\");\n        expect_eq(\"EXPLOIT leak word\", c, 32'hDEADC0DE);\n\n        // 4) dormancy: a further normal op is still correct\n        op(1'b0, 32'h00000000, c);\n        expect_eq(\"normal encrypt 00000000\", c, 32'h08ABD043);\n\n        $display(\"== %0d error(s) ==  %s\", errors, (errors==0) ? \"ALL CHECKS PASSED\" : \"FAILURES PRESENT\");\n        if (errors != 0) $fatal(1, \"exploit_tb: checks failed\");\n        $finish;\n    end\n\n    initial begin #40000000 $fatal(1, \"exploit_tb: timeout\"); end\nendmodule\n"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:26:18.871Z</sub>
+
+**[tool_result]**
+```
+File created successfully at: /home/researcher/work/csaw/submission/tb/exploit_tb.v (file state is current in your context — no need to Read it back)
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:26:22.940Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "cd /home/researcher/work/csaw/submission/rtl && iverilog -g2012 -o /tmp/claude-1000/-home-researcher-work-csaw/6e4cd15c-3819-53a0-a8cc-be147c9c52a5/scratchpad/exploit.vvp ../tb/exploit_tb.v crypto_core_trojan.v && vvp /tmp/claude-1000/-home-researcher-work-csaw/6e4cd15c-3819-53a0-a8cc-be147c9c52a5/scratchpad/exploit.vvp",
+  "description": "Compile and run the exploit testbench"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:26:33.997Z</sub>
+
+**[tool_result]**
+```
+== crypto_core_trojan exploit demonstration ==
+  PASS  normal encrypt 59C359C3      got=9cd84392
+  PASS  normal decrypt 9CD84392      got=59c359c3
+  ----  trigger operand 0xA5A5F00F (clean core would give 0x4F92F627)
+  PASS  EXPLOIT leak word            got=deadc0de
+  PASS  normal encrypt 00000000      got=08abd043
+== 0 error(s) ==  ALL CHECKS PASSED
+../tb/exploit_tb.v:78: $finish called at 5640000 (1ps)
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:01.553Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:02.362Z</sub>
+
+All four exploit checks pass. Now step 4 — the README. Let me read the current file to make precise edits.
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:03.118Z</sub>
+
+**[tool_use: Read]**
+```json
+{
+  "file_path": "/home/researcher/work/csaw/submission/README.md",
+  "offset": 1,
+  "limit": 12
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:27:03.150Z</sub>
+
+**[tool_result]**
+```
+1	# CSAW Hardware-Trojan Challenge — Technical Brief
+2	
+3	> **Status: work-in-progress report.** Reverse engineering, cipher analysis, and the
+4	> full agentic Trojan-insertion pipeline are complete and validated. The final
+5	> LLM-*generated* Trojan population is produced by running the pipeline notebook
+6	> (next step); a hand-authored **reference Trojan** is included and scored end-to-end
+7	> to demonstrate the whole flow working.
+8	
+9	Target: a Lattice **iCE40 UltraPlus UP5K** FPGA ("Hackster" board) acting as an SPI
+10	**peripheral** lightweight crypto accelerator, driven by an RP2040 SPI controller.
+11	Only three inputs were permitted — the interface doc, the RP2040 test script, and the
+12	**bitstream** (`ice40_bitstream.bin`). The source RTL was withheld and had to be
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:08.616Z</sub>
+
+**[tool_use: Edit]**
+```json
+{
+  "replace_all": false,
+  "file_path": "/home/researcher/work/csaw/submission/README.md",
+  "old_string": "> **Status: work-in-progress report.** Reverse engineering, cipher analysis, and the\n> full agentic Trojan-insertion pipeline are complete and validated. The final\n> LLM-*generated* Trojan population is produced by running the pipeline notebook\n> (next step); a hand-authored **reference Trojan** is included and scored end-to-end\n> to demonstrate the whole flow working.",
+  "new_string": "> **Status: complete.** Reverse engineering, cipher analysis, and the full agentic\n> Trojan-insertion pipeline are built and validated, and the **live multi-model LLM\n> pass has been run**. It produced the chosen Trojan **`magic-operand-leak`** (scored\n> **100/100**; the LLM output is re-verified bit-exact against the local toolchain in\n> `rtl/crypto_core_trojan.v` with the exploit testbench `tb/exploit_tb.v`). The raw\n> model responses and run record are in `pipeline/live_run/`. A hand-authored\n> **reference Trojan** (`structured_insert`) is retained as the offline validation seed."
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:27:08.663Z</sub>
+
+**[tool_result]**
+```
+The file /home/researcher/work/csaw/submission/README.md has been updated successfully.
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:17.297Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:17.922Z</sub>
+
+Now add the GNN detector gate to §3's pipeline (it's currently absent):
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:21.064Z</sub>
+
+**[tool_use: Edit]**
+```json
+{
+  "replace_all": false,
+  "file_path": "/home/researcher/work/csaw/submission/README.md",
+  "old_string": "| Scorer | all of the above | single weighted scorecard with hard gates (AST / interface / compile / functional) |\n| Structured inserter | anchor splice | deterministic AST-located Trojan insertion + offline seed generator |",
+  "new_string": "| **GNN stealth gate** | **TrojanGYM GNN4TJ** (torch-geometric 2.3.1) | 4-model ensemble converts each candidate's RTL to an exact PyVerilog dataflow graph and votes clean/trojan — **self-calibrating** (see §3a): only influences the score when it can actually discriminate on this design family |\n| Scorer | all of the above | single weighted scorecard with hard gates (AST / interface / compile / functional) |\n| Structured inserter | anchor splice | deterministic AST-located Trojan insertion + offline seed generator |"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:27:21.113Z</sub>
+
+**[tool_result]**
+```
+The file /home/researcher/work/csaw/submission/README.md has been updated successfully.
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:24.700Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:25.511Z</sub>
+
+Now a subsection documenting the calibrated-detector honesty (a differentiator). Inserting it before the Reproducibility note:
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:38.548Z</sub>
+
+**[tool_use: Edit]**
+```json
+{
+  "replace_all": false,
+  "file_path": "/home/researcher/work/csaw/submission/README.md",
+  "old_string": "**Reproducibility:** `pip install -r pipeline/requirements.txt` (pyslang, anthropic,\nopenai; EDA tools ship in the lab image). Run the notebook top-to-bottom. Setting\n`TROJAN_ENABLE_LLM=0` forces the offline seed-bank path for a key-free CI run.\nArtifacts land in `pipeline/pipeline_out/` (best RTL, `scorecards.json`, `RUN_SUMMARY.md`).",
+  "new_string": "### 3a · Learned detector gate — and why it *recuses itself* (honest calibration)\n\nA second, **learned** stealth gate layers the four **TrojanGYM Robust-GNN4TJ**\ncheckpoints on top of the oracle check: each candidate's RTL is converted to an exact\nPyVerilog dataflow graph (local `hw2vec`) and the ensemble votes clean/trojan.\n\nThe honest finding, and what makes this gate trustworthy: **GNN4TJ is out-of-distribution\nfor this SPI block cipher.** Measured on the recovered core, the clean base, a small\nkey-leak, and a *blatant* counter time-bomb all read `P(trojan) ≈ 0.28–0.34` — the\ndetector cannot see the Trojan here, so an absolute \"evades if P < threshold\" signal is\nmeaningless (the blatant Trojan earns it too). On the models' **own labelled dataset**\nthey do separate strongly (clean median P ≈ 0.25 vs trojan ≈ 0.93), so the failure is\nspecific to this design family, not a broken detector.\n\nRather than quietly trust a useless number, the pipeline **calibrates at startup**: it\nrecords the clean-core baseline `P(trojan)`, then runs a deliberately blatant Trojan\ncontrol on the same core. The detector only contributes to the score if it separates\nthat control from clean by ≥ 0.15; otherwise it **sits out** (`evades_detector = None`,\nits score weight vanishes) and selection rests on the functional / stealth / specificity\n/ footprint gates, which *are* discriminating here. When the detector is informative it\nscores the **rise over baseline** (`Δ = P − baseline`), not the raw out-of-distribution\nvalue. This is a deliberate design choice to avoid reporting a fabricated \"beats the\ndetector\" result — the kind of over-claim an unaudited learned gate invites.\n\n**Reproducibility:** `pip install -r pipeline/requirements.txt` (pyslang, anthropic,\nopenai; EDA tools ship in the lab image). Run the notebook top-to-bottom. Setting\n`TROJAN_ENABLE_LLM=0` forces the offline seed-bank path for a key-free CI run.\nArtifacts land in `pipeline/pipeline_out/` (best RTL, `scorecards.json`, `RUN_SUMMARY.md`);\nthe committed record of the live LLM pass is under `pipeline/live_run/`."
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:27:38.596Z</sub>
+
+**[tool_result]**
+```
+The file /home/researcher/work/csaw/submission/README.md has been updated successfully.
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:51.927Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:27:52.232Z</sub>
+
+Now §4 — lead with the live LLM-generated Trojan:
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:07.588Z</sub>
+
+**[tool_use: Edit]**
+```json
+{
+  "replace_all": false,
+  "file_path": "/home/researcher/work/csaw/submission/README.md",
+  "old_string": "## 4 · Trojan design — reference example (demonstrates the flow)\n\nThe pipeline's scorer is validated end-to-end against a hand-authored reference\nTrojan (the LLM-generated population is produced later by running the loop):\n\n- **Trigger:** a **magic plaintext word** (`0xDEADBEEF`) presented to an *encrypt*\n  operation. Chosen so it never arises in normal traffic — **false-trigger\n  probability ≈ 2⁻³²**; measured false-trigger rate over 128 random vectors = **0**.\n- **Payload:** on the trigger, the operation returns a **constant leak word\n  (`0x8E043CB0`, the recovered key-byte candidates) on MISO** instead of the true\n  ciphertext — a **key-exfiltration** payload. All other traffic is bit-exact to the\n  original.\n- **Stealth / footprint:** normal encrypt/decrypt unchanged (stealth = **1.0** across\n  all 128 random vectors + both documented vectors); area delta **+11 LUT4, +0 DFF**;\n  SPI interface and 4-cycle timing preserved.\n- **Aggregate score: 97.25 / 100** (stealth 40 + payload 30 + specificity 15 +\n  footprint 12.25).\n\nThis is implemented as a tiny comparator + payload mux spliced at the `cipher_out`\nassignment (`structured_insert()` in the notebook) — the same gate/scorer then judges\nLLM-authored variants identically.",
+  "new_string": "## 4 · Trojan design — the chosen LLM-generated Trojan\n\nThe deliverable Trojan, **`magic-operand-leak`**, was authored by the live multi-model\nloop (Anthropic `claude-opus-4-8`). It emerged on the loop's third candidate: the first\ntwo (`operand-selftrig-x4`) scored **0** — their self-trigger collided with the\nfunctional test vectors, breaking normal operation — and the refine loop corrected that\ninto a clean sentinel trigger. RTL: `rtl/crypto_core_trojan.v`; raw model responses and\nthe run record: `pipeline/live_run/`.\n\n- **Trigger:** a **sentinel operand** (`0xA5A5F00F`) presented to any encrypt *or*\n  decrypt operation. It never arises in normal traffic — **false-trigger probability\n  ≈ 2⁻³²**; measured false-trigger rate over 128 random vectors = **0**.\n- **Payload:** on the trigger the operation returns a **constant leak word\n  (`0xDEADC0DE`) on MISO** instead of the true result (a clean core would return\n  `0x4F92F627`) — a signalling/exfiltration payload on the observable output. All other\n  traffic is bit-exact to the original.\n- **Stealth / footprint:** normal encrypt/decrypt unchanged (stealth = **1.0** across\n  all 128 random vectors + both documented vectors); area delta **−10 LUT4, +0 DFF**\n  (the sentinel mux lets the synthesiser prune the result path, so the Trojan is\n  *smaller* than the base); SPI interface and 4-cycle timing preserved.\n- **Aggregate score: 100.0 / 100** (stealth 40 + payload 30 + specificity 15 +\n  footprint 15), confirmed by an independent re-score on the local toolchain and by the\n  self-checking `tb/exploit_tb.v` (all four checks PASS).\n- **Learned detector:** GNN4TJ reads it CLEAN (0/4 votes); per §3a the gate is\n  out-of-distribution for this family and correctly **recuses itself** rather than\n  claiming a stealth result it cannot support.\n\n**Reference / seed Trojan.** The offline `structured_insert()` seed demonstrates the\nsame flow with a **key-exfiltration** payload: trigger `0xDEADBEEF`, leaking the\nrecovered key-byte candidates `0x8E043CB0` on MISO (score 97.25, area +11 LUT4). The\nidentical AST gate + scorer judge the hand-authored seed and the LLM variants the same\nway."
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:28:07.627Z</sub>
+
+**[tool_result]**
+```
+The file /home/researcher/work/csaw/submission/README.md has been updated successfully.
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:11.167Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:11.603Z</sub>
+
+Now §5 (exploitation steps) to match the chosen Trojan:
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:18.584Z</sub>
+
+**[tool_use: Edit]**
+```json
+{
+  "replace_all": false,
+  "file_path": "/home/researcher/work/csaw/submission/README.md",
+  "old_string": "The simulation testbench (`pipeline/tb_core.v` and the notebook's command-driven TB)\nproves **both** normal operation and the triggered exploit. To reproduce on real\nhardware from a generated bitstream, drive the SPI peripheral exactly as the RP2040\ntest script (`../spi_ice40_crypto_ip_test.py`) does:\n\n1. Normal check — encrypt `0x59C359C3`; expect `0x9CD84392` on MISO (Trojan dormant).\n2. Exploit — encrypt the **magic word** `0xDEADBEEF`; instead of its ciphertext the\n   peripheral returns the leak word `0x8E043CB0` on MISO.\n3. Confirm dormancy — any other word encrypts/decrypts normally.",
+  "new_string": "The self-checking testbench **`tb/exploit_tb.v`** proves **both** normal operation and\nthe triggered exploit against `rtl/crypto_core_trojan.v` (all four checks PASS):\n\n```\ncd submission/rtl\niverilog -g2012 -o /tmp/exploit.vvp ../tb/exploit_tb.v crypto_core_trojan.v && vvp /tmp/exploit.vvp\n```\n\nTo reproduce on real hardware from a generated bitstream, drive the SPI peripheral\nexactly as the RP2040 test script (`../spi_ice40_crypto_ip_test.py`) does:\n\n1. Normal check — encrypt `0x59C359C3`; expect `0x9CD84392` on MISO (Trojan dormant).\n2. Exploit — encrypt the **sentinel word** `0xA5A5F00F`; instead of its ciphertext\n   (`0x4F92F627`) the peripheral returns the leak word `0xDEADC0DE` on MISO.\n3. Confirm dormancy — any other word encrypts/decrypts normally."
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:28:18.618Z</sub>
+
+**[tool_result]**
+```
+The file /home/researcher/work/csaw/submission/README.md has been updated successfully.
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:25.103Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:25.411Z</sub>
+
+Now §6 (layout) and §7 (remaining work):
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:34.231Z</sub>
+
+**[tool_use: Edit]**
+```json
+{
+  "replace_all": false,
+  "file_path": "/home/researcher/work/csaw/submission/README.md",
+  "old_string": "├── rtl/                   # clean reverse-engineered base design + S-box ROMs\n│   ├── crypto_core.v      #   (Trojan target; bit-exact to the bitstream)\n│   └── rom_{enc,dec}{0..3}.hex\n├── re/                    # reverse-engineering artifacts + regeneration recipe\n│   ├── recovered.v, clean_model.v, E.json, lanes.json, README_RE.md\n│   └── testbenches/       # RE/analysis probes (pin map, lane independence, key peel)\n├── pipeline/              # the agentic Trojan pipeline\n│   ├── trojan_feedback_pipeline.ipynb   # ← the one-click AI→sim loop\n│   ├── cipher_tables.json, lane_tables.json, tb_core.v, requirements.txt\n│   └── pipeline_out/      # run artifacts (best_trojan.v, scorecards, summary)\n├── tb/                    # exploit testbench (to be finalized with the chosen Trojan)\n└── ai/                    # ALL AI chat logs (transcripts + render tooling)",
+  "new_string": "├── rtl/                   # clean reverse-engineered base design + S-box ROMs\n│   ├── crypto_core.v         #   clean base (Trojan target; bit-exact to the bitstream)\n│   ├── crypto_core_trojan.v  #   ← CHOSEN LLM-generated Trojan (magic-operand-leak)\n│   └── rom_{enc,dec}{0..3}.hex\n├── re/                    # reverse-engineering artifacts + regeneration recipe\n│   ├── recovered.v, clean_model.v, E.json, lanes.json, README_RE.md\n│   └── testbenches/       # RE/analysis probes (pin map, lane independence, key peel)\n├── pipeline/              # the agentic Trojan pipeline\n│   ├── trojan_feedback_pipeline.ipynb   # ← the one-click AI→sim loop\n│   ├── trojangym_scorer.py              #   GNN detector gate (see §3a)\n│   ├── cipher_tables.json, lane_tables.json, tb_core.v, requirements.txt\n│   ├── live_run/          #   committed record of the live LLM pass (summary,\n│   │                      #   scorecards, best_trojan.v, raw llm_response_*.txt)\n│   └── pipeline_out/      #   ephemeral run artifacts (gitignored; regenerated)\n├── tb/                    # exploit testbench\n│   └── exploit_tb.v       #   self-checking normal-op + exploit demonstration\n└── ai/                    # ALL AI chat logs (transcripts + render tooling)"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:28:34.271Z</sub>
+
+**[tool_result]**
+```
+The file /home/researcher/work/csaw/submission/README.md has been updated successfully.
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:42.100Z</sub>
+
+**[tool_use: Edit]**
+```json
+{
+  "replace_all": false,
+  "file_path": "/home/researcher/work/csaw/submission/README.md",
+  "old_string": "## 7 · Remaining work\n\n- Run the refine loop live (multi-model once the Anthropic key is loaded into the\n  container) to produce the LLM-generated Trojan population.\n- Promote the chosen `best_trojan.v` into `rtl/` and finalize the exploit TB in `tb/`.\n- Optional: exact per-bit master-key extraction from the un-flattened `recovered.v`.",
+  "new_string": "## 7 · Status of remaining work\n\n- ✅ **Live LLM pass run** — the multi-model loop produced the chosen Trojan\n  `magic-operand-leak` (`pipeline/live_run/`).\n- ✅ **Chosen Trojan promoted** to `rtl/crypto_core_trojan.v` and the exploit testbench\n  finalized at `tb/exploit_tb.v` (re-verified locally; all checks PASS).\n- ⏳ **Optional bonus:** exact per-bit master-key extraction from the un-flattened\n  `recovered.v` (rounds intact) — ~80% done; high 7 bits of each key byte recovered.\n- ⏳ **Known issue:** the footprint metric misparses `yosys synth_ice40; stat` on stock\n  Colab (reports wrong cell counts); it is correct in the lab image. Scores quoted here\n  are the lab-image/local values. Pin or robustify the parser for Colab reproducibility."
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:28:42.134Z</sub>
+
+**[tool_result]**
+```
+The file /home/researcher/work/csaw/submission/README.md has been updated successfully.
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:46.663Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:47.480Z</sub>
+
+Now let me verify git will actually track the new files (and that `pipeline_out/` stays ignored), then show the full diff for your review.
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:28:51.036Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "cd /home/researcher/work/csaw && echo \"=== untracked/modified (excluding Zone.Identifier) ===\" && git status -s | grep -v Zone.Identifier && echo \"\" && echo \"=== confirm key new files are NOT ignored ===\" && for f in submission/rtl/crypto_core_trojan.v submission/tb/exploit_tb.v submission/pipeline/live_run/best_trojan.v submission/pipeline/live_run/RUN_SUMMARY.md submission/pipeline/live_run/llm_response_0.txt; do git check-ignore -q \"$f\" && echo \"IGNORED: $f\" || echo \"tracked-ok: $f\"; done && echo \"\" && echo \"=== confirm pipeline_out IS still ignored ===\" && git check-ignore submission/pipeline/pipeline_out/best_trojan.v && echo \"(pipeline_out correctly ignored)\"",
+  "description": "Verify tracking of new files and gitignore behavior"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:28:53.648Z</sub>
+
+**[tool_result]**
+```
+=== untracked/modified (excluding Zone.Identifier) ===
+ M submission/README.md
+ M submission/ai/snapshot_transcript.sh
+ M submission/ai/transcript_6e4cd15c-3819-53a0-a8cc-be147c9c52a5.jsonl
+ M submission/ai/transcript_6e4cd15c-3819-53a0-a8cc-be147c9c52a5.md
+ M submission/pipeline/ping_anthropic.sh
+?? submission/pipeline/live_run/
+?? submission/rtl/crypto_core_trojan.v
+?? submission/tb/
+
+=== confirm key new files are NOT ignored ===
+tracked-ok: submission/rtl/crypto_core_trojan.v
+tracked-ok: submission/tb/exploit_tb.v
+tracked-ok: submission/pipeline/live_run/best_trojan.v
+tracked-ok: submission/pipeline/live_run/RUN_SUMMARY.md
+tracked-ok: submission/pipeline/live_run/llm_response_0.txt
+
+=== confirm pipeline_out IS still ignored ===
+submission/pipeline/pipeline_out/best_trojan.v
+(pipeline_out correctly ignored)
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:29:04.733Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:29:06.669Z</sub>
+
+Steps 1–4 are done and everything tracks correctly. Two notes before committing:
+
+- There are pre-existing uncommitted changes I did **not** make — `submission/pipeline/ping_anthropic.sh` and `submission/ai/snapshot_transcript.sh` — plus this session's live transcript. I'll leave those out of the commit (scope it to the 1–4 work).
+
+Let me show you the diff stat and the README changes for review:
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:29:09.765Z</sub>
+
+**[tool_use: Bash]**
+```json
+{
+  "command": "echo \"=== files in the 1-4 changeset ===\" && git add -A -n submission/README.md submission/rtl/crypto_core_trojan.v submission/tb/exploit_tb.v submission/pipeline/live_run/ 2>/dev/null; git diff --stat submission/README.md && echo \"\" && echo \"new files:\" && printf \"  %s\\n\" submission/rtl/crypto_core_trojan.v submission/tb/exploit_tb.v submission/pipeline/live_run/{RUN_SUMMARY.md,scorecards.json,best_trojan.v,llm_response_0.txt,llm_response_1.txt,llm_response_2.txt} && echo \"\" && echo \"=== README diff ===\" && git diff submission/README.md",
+  "description": "Show README diff and changeset for review"
+}
+```
+
+---
+
+## 🧑 User  <sub>2026-11-10T17:29:11.233Z</sub>
+
+**[tool_result]**
+```
+=== files in the 1-4 changeset ===
+add 'submission/README.md'
+add 'submission/pipeline/live_run/RUN_SUMMARY.md'
+add 'submission/pipeline/live_run/best_trojan.v'
+add 'submission/pipeline/live_run/llm_response_0.txt'
+add 'submission/pipeline/live_run/llm_response_1.txt'
+add 'submission/pipeline/live_run/llm_response_2.txt'
+add 'submission/pipeline/live_run/scorecards.json'
+add 'submission/rtl/crypto_core_trojan.v'
+add 'submission/tb/exploit_tb.v'
+ submission/README.md | 137 ++++++++++++++++++++++++++++++++++++---------------
+ 1 file changed, 96 insertions(+), 41 deletions(-)
+
+new files:
+  submission/rtl/crypto_core_trojan.v
+  submission/tb/exploit_tb.v
+  submission/pipeline/live_run/RUN_SUMMARY.md
+  submission/pipeline/live_run/scorecards.json
+  submission/pipeline/live_run/best_trojan.v
+  submission/pipeline/live_run/llm_response_0.txt
+  submission/pipeline/live_run/llm_response_1.txt
+  submission/pipeline/live_run/llm_response_2.txt
+
+=== README diff ===
+diff --git a/submission/README.md b/submission/README.md
+index f54c34f..017d1bc 100644
+--- a/submission/README.md
++++ b/submission/README.md
+@@ -1,10 +1,12 @@
+ # CSAW Hardware-Trojan Challenge — Technical Brief
+ 
+-> **Status: work-in-progress report.** Reverse engineering, cipher analysis, and the
+-> full agentic Trojan-insertion pipeline are complete and validated. The final
+-> LLM-*generated* Trojan population is produced by running the pipeline notebook
+-> (next step); a hand-authored **reference Trojan** is included and scored end-to-end
+-> to demonstrate the whole flow working.
++> **Status: complete.** Reverse engineering, cipher analysis, and the full agentic
++> Trojan-insertion pipeline are built and validated, and the **live multi-model LLM
++> pass has been run**. It produced the chosen Trojan **`magic-operand-leak`** (scored
++> **100/100**; the LLM output is re-verified bit-exact against the local toolchain in
++> `rtl/crypto_core_trojan.v` with the exploit testbench `tb/exploit_tb.v`). The raw
++> model responses and run record are in `pipeline/live_run/`. A hand-authored
++> **reference Trojan** (`structured_insert`) is retained as the offline validation seed.
+ 
+ Target: a Lattice **iCE40 UltraPlus UP5K** FPGA ("Hackster" board) acting as an SPI
+ **peripheral** lightweight crypto accelerator, driven by an RP2040 SPI controller.
+@@ -127,6 +129,7 @@ API key, so the loop is always reproducible.
+ | Sim harness | Icarus Verilog | command-driven SPI TB (`R`/`E`/`D` programs, state preserved across ops → supports sequential Trojans) |
+ | Footprint | Yosys `synth_ice40` | iCE40 cell counts; base = **141 LUT4 / 68 DFF / 8 RAM40 / 1 CARRY** |
+ | **AST gate** | **pyslang 12.1.0** | parse + semantic **elaborate** (`Compilation.getAllDiagnostics`) and enforce module name + exact port list are unchanged — the Trojan may not alter the SPI interface |
++| **GNN stealth gate** | **TrojanGYM GNN4TJ** (torch-geometric 2.3.1) | 4-model ensemble converts each candidate's RTL to an exact PyVerilog dataflow graph and votes clean/trojan — **self-calibrating** (see §3a): only influences the score when it can actually discriminate on this design family |
+ | Scorer | all of the above | single weighted scorecard with hard gates (AST / interface / compile / functional) |
+ | Structured inserter | anchor splice | deterministic AST-located Trojan insertion + offline seed generator |
+ | Generator | Anthropic / OpenAI | provider-agnostic client; structured JSON candidate contract |
+@@ -138,47 +141,89 @@ is **multi-model**; and the loop is a genuine **feedback/refinement agent** rath
+ one-shot prompting. The verification oracle is derived from the *reverse-engineered
+ cipher itself*, so "normal operation preserved" is checked against the real function.
+ 
++### 3a · Learned detector gate — and why it *recuses itself* (honest calibration)
++
++A second, **learned** stealth gate layers the four **TrojanGYM Robust-GNN4TJ**
++checkpoints on top of the oracle check: each candidate's RTL is converted to an exact
++Py
+... [truncated 9470 chars]
+```
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:29:18.258Z</sub>
+
+
+---
+
+## 🤖 Assistant <sub>claude-opus-4-8 · 2026-11-10T17:29:26.241Z</sub>
+
+Steps 1–4 are complete. Summary:
+
+1. **Promoted** the Trojan → `submission/rtl/crypto_core_trojan.v` (tracked; `pipeline_out/` stays gitignored as intended).
+2. **Exploit TB** → `submission/tb/exploit_tb.v`, self-checking, **all 4 checks PASS** locally (normal enc/dec bit-exact, `0xA5A5F00F → 0xDEADC0DE` fires, dormancy confirmed).
+3. **AI artifacts tracked** → `submission/pipeline/live_run/` holds `RUN_SUMMARY.md`, `scorecards.json`, `best_trojan.v`, and the three raw `llm_response_*.txt` (proof of LLM authorship).
+4. **README updated** (+96/−41): status → complete; new §3a on the calibrated detector; §4 now leads with the live `magic-operand-leak` (100/100, lutΔ −10); §5 exploit steps, §6 layout, §7 status all refreshed. I also documented the Colab footprint bug honestly in §7.
+
+**One content choice worth your call:** the chosen LLM Trojan leaks a *marker* word (`0xDEADC0DE`), while the reference seed leaks the *actual recovered key bytes* (`0x8E043CB0`) — a stronger "exfiltration" narrative. I kept the live LLM one as the headline (it's what the pipeline genuinely produced, and scores higher) and documented the key-leaking seed alongside. If you'd rather feature key exfiltration as the primary story, say so and I'll reframe.
+
+**Ready to commit?** I'll scope the commit to just these 1–4 files (README, crypto_core_trojan.v, tb/, live_run/) and leave the unrelated pre-existing changes (`ping_anthropic.sh`, `snapshot_transcript.sh`, live transcript) untouched. Then you push from the Mac. Want me to commit?

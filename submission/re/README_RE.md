@@ -38,9 +38,14 @@ ENC_DEC=io_19_31_1, START=io_18_31_1 | BUSY=io_8_31_1, ICE_LED=io_19_31_0, MISO=
 
 ## Cipher summary
 Four byte-INDEPENDENT lanes; each output byte = a keyed 8->8 S-box bijection of the
-same input byte (BRAM S-box per lane). Only round 1 is data-dependent (BUSY=4 cycles).
-Measured per-lane input-whitening (round-1 S-box address = (byte>>1) XOR off):
-lane0 off=0x58, lane1 0x1e, lane2 0x02, lane3 0x47. Full functional spec = E.json.
+same input byte (BRAM S-box per lane). The cipher is a single combinational round
+AddRoundKey->SubBytes (BUSY=4 cycles is just latency). Full functional spec = E.json.
+
+## Master key = 0x8E043CB1  (see MASTERKEY.md)
+Input whitening recovered in full from the round-1 BRAM address nets: the address
+is perm(plaintext_byte XOR key_byte). Key bytes k0..k3 = B1,3C,04,8E
+(operand[7:0]..operand[31:24]). Verified: feeding p=0x8E043CB1 zeroes all four
+lane addresses. Harnesses: testbenches/tb_fullkey.v (recover), tb_verify.v (prove).
 
 The clean re-expressed design used for Trojan work is `../rtl/crypto_core.v` (verified
 bit-exact to this golden model: 128/128 random vectors + both documented vectors).
